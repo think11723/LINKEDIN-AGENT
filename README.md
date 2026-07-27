@@ -66,6 +66,25 @@ The agent uses a modular architecture where each component has a specific respon
 
 ## Architecture
 
+The system follows a modular architecture with clear separation of concerns:
+
+### Components
+
+**Agents** - AI reasoning and content generation
+- Planner: Analyzes intent and creates execution plans
+- Writer: Generates LinkedIn content with personalization
+- Reviewer: Scores and improves content quality
+- Image Prompt: Creates detailed image generation prompts
+
+**Services** - External integrations and utilities
+- Search: Web search via DuckDuckGo
+- LLM: Gemini AI wrapper for text generation
+- LinkedIn: Publishing workflow (placeholder for future API integration)
+- Image Generation: AI image generation service
+
+**Workflows** - Orchestration and execution flow
+- CLI Workflow: Terminal-based content creation pipeline
+
 The system follows a pipeline architecture where each agent processes the output of the previous agent:
 
 ```mermaid
@@ -107,6 +126,10 @@ graph TD
 
 ```
 LINKEDIN_AGENT/
+├── app.py                  # FastAPI application entry point
+├── config/                 # Configuration module
+│   ├── __init__.py
+│   └── config.py           # Configuration management
 ├── agents/                 # Agent implementations
 │   ├── __init__.py
 │   ├── planner.py          # Planning and style detection
@@ -114,34 +137,51 @@ LINKEDIN_AGENT/
 │   ├── reviewer.py         # Content review and improvement
 │   ├── image_prompt.py     # Image prompt generation
 │   └── publisher.py        # Preview and publishing
-├── tools/                  # Utility tools
+├── workflows/              # Workflow orchestration
+│   ├── __init__.py
+│   └── cli_workflow.py     # CLI workflow implementation
+├── services/               # External service integrations
 │   ├── __init__.py
 │   ├── llm.py              # LLM wrapper for Gemini
 │   ├── search.py           # DuckDuckGo web search
-│   └── image_generator.py  # Pollinations.ai image generation
-├── utils/                  # Shared utilities
+│   ├── image_generator.py  # AI image generation
+│   └── linkedin/           # LinkedIn publishing (placeholder)
+│       ├── __init__.py
+│       └── README.md
+├── database/               # Data storage
 │   ├── __init__.py
-│   ├── config.py           # Configuration management
+│   ├── profile.json        # User profile data
+│   └── profile.template.json
+├── models/                 # Data models
+│   ├── __init__.py
 │   ├── models.py           # Shared data models
-│   ├── parsers.py          # Response parsing utilities
-│   ├── profile_manager.py  # Profile loading and validation
-│   └── style_manager.py    # Writing style detection
+│   └── profile_models.py   # Profile data models
 ├── prompts/                # Prompt templates
 │   ├── __init__.py
 │   └── styles/             # Writing style prompts
 │       ├── __init__.py
 │       ├── professional.txt
-│       ├── casual.txt
+│       ├── storytelling.txt
+│       ├── technical_deep_dive.txt
+│       ├── educational.txt
+│       ├── founder.txt
+│       ├── career_journey.txt
 │       ├── beginner_friendly.txt
-│       └── ...
-├── profile/                # User profile
-│   ├── profile.json        # User profile data
-│   ├── profile.template.json
-│   └── models.py           # Profile data models
+│       ├── opinion.txt
+│       ├── product_launch.txt
+│       └── hiring.txt
+├── utils/                  # Shared utilities
+│   ├── __init__.py
+│   ├── parsers.py          # Response parsing utilities
+│   ├── profile_manager.py  # Profile loading and validation
+│   ├── style_manager.py    # Writing style detection
+│   └── logger.py           # Logging configuration
+├── tests/                  # Test suite
+│   └── __init__.py
+├── docs/                   # Documentation
+│   └── __init__.py
 ├── output/                 # Generated content
-│   ├── images/             # Generated images
-│   └── latest_post.md      # Latest generated post
-├── main.py                 # Application entry point
+│   └── images/             # Generated images
 ├── requirements.txt        # Python dependencies
 ├── .env.example            # Environment variables template
 ├── .gitignore              # Git ignore rules
@@ -205,7 +245,7 @@ TEMPERATURE=0.7
 
 ### Step 5: Set Up Profile
 
-Edit `profile/profile.json` with your information:
+Edit `database/profile.json` with your information:
 
 ```json
 {
@@ -227,11 +267,21 @@ Edit `profile/profile.json` with your information:
 
 ## Usage
 
-### Run the Application
+### Run CLI Application
 
 ```bash
-python main.py
+python -m workflows.cli_workflow
 ```
+
+### Run Web API
+
+```bash
+uvicorn app:app --reload
+```
+
+The API will be available at `http://localhost:8000`
+
+Health check: `GET /`
 
 ### Example Prompts
 
@@ -322,15 +372,19 @@ If you want to provide feedback:
 ### Planned (v2.0)
 
 - 🔄 LinkedIn API integration for direct publishing
+- 🔄 RAG (Retrieval-Augmented Generation) for content research
+- 🔄 LangGraph workflow orchestration
 - 🔄 Content scheduling
 - 🔄 Analytics and engagement tracking
 - 🔄 A/B testing for content variants
 - 🔄 Hashtag optimization
 - 🔄 Multi-language support
-- 🔄 Web interface
+- 🔄 Enhanced web interface
 - 🔄 Content history and versioning
 - 🔄 Template library
 - 🔄 Export to multiple formats (PDF, HTML)
+- 🔄 Email notifications
+- 🔄 OAuth authentication flow
 
 ---
 

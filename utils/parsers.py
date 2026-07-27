@@ -4,7 +4,7 @@ This module provides common parsing functions used across multiple agents.
 """
 
 from typing import List, Tuple
-from utils.models import LinkedInPost
+from models.models import LinkedInPost
 
 
 def parse_structured_response(response: str, fallback_title: str = "LinkedIn Post") -> Tuple[str, str, List[str]]:

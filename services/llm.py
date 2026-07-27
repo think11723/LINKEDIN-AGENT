@@ -7,7 +7,7 @@ It handles initialization, API key loading, and provides a clean generate_text f
 from typing import Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
-from utils.config import config
+from config.config import config
 
 
 class LLMWrapper:

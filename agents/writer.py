@@ -9,12 +9,12 @@ from pydantic import BaseModel, Field
 from rich.console import Console
 from rich.panel import Panel
 from pathlib import Path
-from utils.config import config
-from utils.models import LinkedInPost
+from config.config import config
+from models.models import LinkedInPost
+from models.context_models import Context
 from utils.parsers import create_linkedin_post
-from utils.profile_manager import load_profile, get_profile_summary, profile_exists
 from utils.style_manager import load_style_prompt
-from tools.llm import generate_text
+from services.llm import generate_text
 
 
 console = Console()
@@ -67,7 +67,8 @@ If research results are provided, incorporate insights naturally.
         user_prompt: str,
         research: Optional[List[Dict[str, str]]] = None,
         writing_style: str = "professional",
-        edit_instruction: Optional[str] = None
+        edit_instruction: Optional[str] = None,
+        context: Optional[Context] = None
     ) -> LinkedInPost:
         """Generate a LinkedIn post based on execution context.
         
@@ -78,24 +79,25 @@ If research results are provided, incorporate insights naturally.
             research: Optional search results for grounding.
             writing_style: Writing style for the post.
             edit_instruction: Optional edit instruction for refining the post.
+            context: Unified context object with user preferences.
             
         Returns:
             LinkedInPost: Structured LinkedIn post with title, content, and hashtags.
         """
-        # Load profile summary if available
-        profile_summary = None
-        if profile_exists():
-            profile = load_profile()
-            if profile:
-                profile_summary = get_profile_summary(profile)
+        # Use context for profile summary
+        profile_summary = context.profile_summary if context else None
         
-        # Load style-specific prompt
-        style_prompt = load_style_prompt(writing_style)
-        if style_prompt:
-            self.system_prompt = style_prompt
+        # Load style-specific prompt from context if available
+        if context and context.get_style_prompt():
+            self.system_prompt = context.get_style_prompt()
         else:
-            # Fallback to default prompt if style not found
-            self._setup_prompt()
+            # Fallback to loading from file
+            style_prompt = load_style_prompt(writing_style)
+            if style_prompt:
+                self.system_prompt = style_prompt
+            else:
+                # Fallback to default prompt if style not found
+                self._setup_prompt()
         
         # Build context
         context = self._build_context(topic, intent, user_prompt, research, profile_summary, edit_instruction)

@@ -4,9 +4,11 @@ This agent analyzes user requests and creates an execution plan,
 determining whether web search is needed.
 """
 
+from typing import Optional
 from pydantic import BaseModel, Field
-from utils.config import config
+from config.config import config
 from utils.style_manager import detect_style
+from models.context_models import Context
 
 
 class ExecutionPlan(BaseModel):
@@ -33,11 +35,12 @@ class PlannerAgent:
         # In future, this could use LLM for more sophisticated planning
         pass
     
-    def plan(self, user_request: str) -> ExecutionPlan:
+    def plan(self, user_request: str, context: Optional[Context] = None) -> ExecutionPlan:
         """Create an execution plan for the user's request.
         
         Args:
             user_request: Natural language request from the user.
+            context: Unified context object with user preferences.
             
         Returns:
             ExecutionPlan: Structured plan for creating the LinkedIn post.
@@ -45,12 +48,16 @@ class PlannerAgent:
         # Detect writing style
         writing_style = detect_style(user_request)
         
+        # Use context writing style if provided
+        if context and context.writing_style:
+            writing_style = context.writing_style
+        
         # Parse the request into structured format
-        plan = self._parse_response(user_request, writing_style)
+        plan = self._parse_response(user_request, writing_style, context)
         
         return plan
     
-    def _parse_response(self, user_request: str, writing_style: str = "professional") -> ExecutionPlan:
+    def _parse_response(self, user_request: str, writing_style: str = "professional", context: Optional[Context] = None) -> ExecutionPlan:
         """Parse the user request into an ExecutionPlan.
         
         Args:

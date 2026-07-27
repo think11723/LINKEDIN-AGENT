@@ -15,11 +15,11 @@ from agents.planner import PlannerAgent, ExecutionPlan
 from agents.writer import WriterAgent
 from agents.reviewer import ReviewerAgent, ReviewResult, print_review_result
 from agents.image_prompt import ImagePromptAgent, ImagePrompt, print_image_prompt
-from agents.publisher import PublisherAgent
-from tools.search import search_web
-from tools.image_generator import generate_image
-from utils.config import config
-from utils.models import LinkedInPost
+from services.linkedin.publisher import PublisherAgent
+from services.search import search_web
+from services.image_generator import generate_image
+from config.config import config
+from models.models import LinkedInPost
 
 
 console = Console()

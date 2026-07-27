@@ -8,6 +8,10 @@ python-dotenv==1.0.1
 pydantic==2.9.2
 rich==13.9.4
 
+# Web API
+fastapi>=0.104.0
+uvicorn>=0.24.0
+
 # Search
 duckduckgo-search==6.3.5
 

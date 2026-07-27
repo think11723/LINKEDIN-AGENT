@@ -8,9 +8,9 @@ from typing import Dict
 from pydantic import BaseModel, Field
 from rich.console import Console
 from rich.panel import Panel
-from utils.models import LinkedInPost
-from utils.config import config
-from tools.llm import generate_text
+from models.models import LinkedInPost
+from config.config import config
+from services.llm import generate_text
 import re
 
 

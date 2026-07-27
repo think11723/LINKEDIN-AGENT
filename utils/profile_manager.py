@@ -8,13 +8,13 @@ import json
 from pathlib import Path
 from typing import Optional
 from rich.console import Console
-from profile.models import Profile
+from models.profile_models import Profile
 
 console = Console()
 
 
-PROFILE_PATH = Path(__file__).parent.parent / "profile" / "profile.json"
-TEMPLATE_PATH = Path(__file__).parent.parent / "profile" / "profile.template.json"
+PROFILE_PATH = Path(__file__).parent.parent / "database" / "profile.json"
+TEMPLATE_PATH = Path(__file__).parent.parent / "database" / "profile.template.json"
 
 
 def load_profile() -> Optional[Profile]:

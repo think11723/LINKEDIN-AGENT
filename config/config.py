@@ -28,6 +28,7 @@ class Config:
         self.project_root: Path = Path(__file__).parent.parent
         self.output_dir: Path = self.project_root / "output"
         self.images_dir: Path = self.output_dir / "images"
+        self.database_dir: Path = self.project_root / "database"
         
         # Ensure output directories exist
         self._create_directories()

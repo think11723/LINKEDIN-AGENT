@@ -8,8 +8,8 @@ from typing import Optional
 from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
-from utils.models import LinkedInPost
-from utils.config import config
+from models.models import LinkedInPost
+from config.config import config
 
 
 console = Console()

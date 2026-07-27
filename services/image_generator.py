@@ -11,7 +11,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 import requests
 import urllib.parse
 from agents.image_prompt import ImagePrompt
-from utils.config import config
+from config.config import config
 
 
 console = Console()
