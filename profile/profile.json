@@ -1,0 +1,175 @@
+{
+  "basic_info": {
+    "full_name": "Pratik Waghral",
+    "preferred_name": "Pratik",
+    "headline": "Software Engineering Student | Full Stack Developer | Agentic AI Enthusiast",
+    "current_role": "Software Engineering Student",
+    "organisation": "PW Institute of Innovation",
+    "location": "Bengaluru, India",
+    "years_of_experience": 0
+  },
+  "education": {
+    "degree": "Software Engineering",
+    "college": "PW Institute of Innovation",
+    "graduation_year": null
+  },
+  "professional_summary": {
+    "about_me": "I'm a Software Engineering student passionate about building practical AI-powered applications and scalable full-stack systems. I enjoy solving real-world problems using modern technologies and continuously improving my software engineering skills through hands-on projects.",
+    "career_goal": "To become an AI Engineer building intelligent agents, developer tools, and production-ready AI applications.",
+    "current_learning": "Agentic AI, LangChain, LangGraph, RAG, AI Agents, LLM Engineering"
+  },
+  "skills": {
+    "technical_skills": [
+      "Python",
+      "JavaScript",
+      "HTML",
+      "CSS",
+      "React",
+      "Node.js",
+      "Express.js",
+      "Firebase",
+      "REST APIs"
+    ],
+    "soft_skills": [
+      "Problem Solving",
+      "Continuous Learning",
+      "Communication",
+      "Teamwork",
+      "Analytical Thinking"
+    ],
+    "frameworks": [
+      "React",
+      "Express.js",
+      "LangChain"
+    ],
+    "languages": [
+      "Python",
+      "JavaScript",
+      "C",
+      "C++",
+      "Java"
+    ],
+    "tools": [
+      "Git",
+      "GitHub",
+      "VS Code",
+      "Cursor",
+      "Windsurf",
+      "Postman"
+    ],
+    "databases": [
+      "Firestore",
+      "MongoDB",
+      "SQL"
+    ],
+    "cloud": [
+      "Firebase"
+    ],
+    "ai_stack": [
+      "LangChain",
+      "RAG",
+      "OpenAI Agents SDK",
+      "Gemini",
+      "OpenRouter",
+      "Prompt Engineering"
+    ]
+  },
+  "projects": [
+    {
+      "name": "AI LinkedIn Content Agent",
+      "short_description": "An AI-powered LinkedIn content generation agent with planning, research, writing, reviewing, personalization, AI image generation, editing and publishing workflow.",
+      "technologies": [
+        "Python",
+        "LangChain",
+        "Gemini",
+        "DuckDuckGo",
+        "Rich",
+        "Pydantic"
+      ],
+      "achievements": [
+        "Built modular multi-agent architecture",
+        "Implemented profile-based personalization",
+        "Added human-in-the-loop workflow"
+      ],
+      "github": "",
+      "live_demo": ""
+    },
+    {
+      "name": "Placement Portal",
+      "short_description": "Role-based placement management portal for students, recruiters and administrators.",
+      "technologies": [
+        "React",
+        "Firebase",
+        "Tailwind CSS"
+      ],
+      "achievements": [
+        "Role-based authentication",
+        "Firestore integration"
+      ],
+      "github": "",
+      "live_demo": ""
+    },
+    {
+      "name": "NetflixGPT",
+      "short_description": "Movie recommendation application using AI and TMDB.",
+      "technologies": [
+        "React",
+        "OpenAI",
+        "TMDB"
+      ],
+      "achievements": [
+        "AI-powered movie recommendations"
+      ],
+      "github": "",
+      "live_demo": ""
+    }
+  ],
+  "experience": [],
+  "certifications": [],
+  "writing_preferences": {
+    "preferred_tone": "Professional and Educational",
+    "favourite_opening_style": "Hook followed by personal insight",
+    "emoji_usage": "Minimal",
+    "paragraph_length": "Short",
+    "preferred_cta_style": "Ask an engaging question at the end"
+  },
+  "personal_branding": {
+    "target_audience": "Students, Software Engineers, AI Developers, Recruiters",
+    "niche": "AI Engineering and Full Stack Development",
+    "expertise": "Agentic AI, Full Stack Development, AI Automation",
+    "topics_to_write_about": [
+      "AI",
+      "LLMs",
+      "LangChain",
+      "LangGraph",
+      "Software Engineering",
+      "MERN",
+      "Python",
+      "Career Growth",
+      "Projects",
+      "Open Source"
+    ],
+    "topics_to_avoid": [
+      "Politics",
+      "Religion",
+      "Controversial Social Topics"
+    ]
+  },
+  "achievements": {
+    "hackathons": [],
+    "competitions": [],
+    "awards": [],
+    "milestones": [
+      "Built multiple full-stack projects",
+      "Built AI-powered automation projects",
+      "Built a modular AI LinkedIn Content Agent"
+    ]
+  },
+  "social_links": {
+    "github": "",
+    "linkedin": "",
+    "portfolio": "",
+    "twitter": "",
+    "website": ""
+  }
+}

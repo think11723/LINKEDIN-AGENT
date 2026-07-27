@@ -1,0 +1,201 @@
+{
+  "basic_info": {
+    "full_name": "Jane Doe",
+    "preferred_name": "Jane",
+    "headline": "Software Engineer | AI Enthusiast | Building the Future",
+    "current_role": "Software Engineer",
+    "organisation": "Tech Company Inc.",
+    "location": "San Francisco, CA",
+    "years_of_experience": 5
+  },
+  "education": {
+    "degree": "Bachelor of Science in Computer Science",
+    "college": "University of Technology",
+    "graduation_year": 2019
+  },
+  "professional_summary": {
+    "about_me": "Passionate software engineer with expertise in building scalable applications and exploring AI technologies. I love sharing knowledge and helping others grow in their tech careers.",
+    "career_goal": "To become a leader in AI-powered software development and mentor the next generation of engineers.",
+    "current_learning": "Currently diving deep into Large Language Models, LangChain, and Agentic AI systems."
+  },
+  "skills": {
+    "technical_skills": [
+      "Python",
+      "JavaScript",
+      "TypeScript",
+      "Java",
+      "SQL"
+    ],
+    "soft_skills": [
+      "Communication",
+      "Leadership",
+      "Problem-solving",
+      "Team collaboration"
+    ],
+    "frameworks": [
+      "React",
+      "Node.js",
+      "Express",
+      "Django",
+      "Flask"
+    ],
+    "languages": [
+      "English",
+      "Spanish"
+    ],
+    "tools": [
+      "Git",
+      "Docker",
+      "Kubernetes",
+      "AWS",
+      "VS Code"
+    ],
+    "databases": [
+      "PostgreSQL",
+      "MongoDB",
+      "Redis"
+    ],
+    "cloud": [
+      "AWS",
+      "GCP",
+      "Azure"
+    ],
+    "ai_stack": [
+      "LangChain",
+      "OpenAI API",
+      "Hugging Face",
+      "PyTorch",
+      "TensorFlow"
+    ]
+  },
+  "projects": [
+    {
+      "name": "AI Content Generator",
+      "short_description": "An AI-powered tool that generates personalized LinkedIn content based on user profiles and preferences.",
+      "technologies": [
+        "Python",
+        "LangChain",
+        "OpenAI",
+        "FastAPI"
+      ],
+      "achievements": [
+        "Built end-to-end AI pipeline",
+        "Implemented profile-based personalization",
+        "Deployed to production with 1000+ users"
+      ],
+      "github": "https://github.com/janedoe/ai-content-generator",
+      "live_demo": "https://ai-content-generator.demo"
+    },
+    {
+      "name": "E-commerce Platform",
+      "short_description": "A full-stack e-commerce platform with real-time inventory management and payment processing.",
+      "technologies": [
+        "React",
+        "Node.js",
+        "MongoDB",
+        "Stripe"
+      ],
+      "achievements": [
+        "Reduced page load time by 40%",
+        "Implemented secure payment processing",
+        "Scaled to 10,000+ daily users"
+      ],
+      "github": "https://github.com/janedoe/ecommerce-platform",
+      "live_demo": null
+    }
+  ],
+  "experience": [
+    {
+      "role": "Senior Software Engineer",
+      "company": "Tech Company Inc.",
+      "duration": "2022 - Present",
+      "responsibilities": [
+        "Led development of AI-powered features",
+        "Mentored junior developers",
+        "Architected scalable microservices"
+      ],
+      "achievements": [
+        "Increased team productivity by 30%",
+        "Launched 3 major product features",
+        "Reduced system downtime by 50%"
+      ]
+    },
+    {
+      "role": "Software Engineer",
+      "company": "Startup XYZ",
+      "duration": "2019 - 2022",
+      "responsibilities": [
+        "Built full-stack web applications",
+        "Implemented CI/CD pipelines",
+        "Collaborated with product and design teams"
+      ],
+      "achievements": [
+        "Shipped 15+ features",
+        "Improved test coverage to 90%",
+        "Contributed to open-source projects"
+      ]
+    }
+  ],
+  "certifications": [
+    {
+      "title": "AWS Certified Solutions Architect",
+      "issuer": "Amazon Web Services",
+      "year": 2021
+    },
+    {
+      "title": "Google Professional ML Engineer",
+      "issuer": "Google Cloud",
+      "year": 2023
+    }
+  ],
+  "writing_preferences": {
+    "preferred_tone": "professional and educational",
+    "favourite_opening_style": "story-based or question-based",
+    "emoji_usage": "minimal",
+    "paragraph_length": "short to medium",
+    "preferred_cta_style": "subtle and value-driven"
+  },
+  "personal_branding": {
+    "target_audience": "students, developers, tech professionals",
+    "niche": "AI, software engineering, career growth",
+    "expertise": "AI development, full-stack engineering, mentorship",
+    "topics_to_write_about": [
+      "AI and Machine Learning",
+      "Software Engineering Best Practices",
+      "Career Growth in Tech",
+      "Building in Public",
+      "Open Source"
+    ],
+    "topics_to_avoid": [
+      "Political content",
+      "Controversial topics",
+      "Non-tech personal opinions"
+    ]
+  },
+  "achievements": {
+    "hackathons": [
+      "First place - AI Hackathon 2023",
+      "Runner up - Global Code Jam 2022"
+    ],
+    "competitions": [
+      "Top 100 - LeetCode Weekly Contest",
+      "Finalist - Kaggle Competition"
+    ],
+    "awards": [
+      "Employee of the Year 2023",
+      "Best Technical Blog 2022"
+    ],
+    "milestones": [
+      "Reached 10,000 LinkedIn followers",
+      "Published 50+ technical articles",
+      "Contributed to 20+ open-source repositories"
+    ]
+  },
+  "social_links": {
+    "github": "https://github.com/janedoe",
+    "linkedin": "https://linkedin.com/in/janedoe",
+    "portfolio": "https://janedoe.dev",
+    "twitter": "https://twitter.com/janedoe",
+    "website": "https://janedoe.dev"
+  }
+}
