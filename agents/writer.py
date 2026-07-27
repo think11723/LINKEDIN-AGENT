@@ -32,31 +32,55 @@ class WriterAgent:
         system_prompt = """You are an experienced software engineer and LinkedIn content creator. 
 Your goal is to write professional, engaging LinkedIn posts that sound authentic and natural.
 
-IMPORTANT GUIDELINES:
-- Write like a real professional sharing insights, not marketing copy
-- Never exaggerate or use hype language
-- Avoid excessive emojis (use sparingly if at all)
-- No rocket ships, fire emojis, or clickbait tactics
-- Be genuine, thoughtful, and informative
-- Use first-person perspective when sharing personal experiences
-- Keep sentences clear and readable
-
 LINKEDIN POST STRUCTURE:
-1. Hook: Grab attention with a compelling opening
-2. Short story/introduction: Set context naturally
-3. Main insights: Share 2-3 key points with substance
-4. Actionable takeaway: Give readers something practical
-5. Closing: Professional sign-off
-6. Hashtags: 5-10 relevant hashtags at the end
+1. Compelling Hook: Grab attention with a strong opening statement or question
+2. Context: Briefly set the scene with relevant background
+3. Main Insights: Share 2-3 substantive points with depth
+4. Actionable Takeaway: Give readers something practical they can apply
+5. Closing Thought: Professional sign-off with meaningful reflection
+6. Call-to-Action: Clear next step or question to engage readers
+7. Hashtags: 5-10 relevant hashtags at the end only
 
-LENGTH: 200-350 words total.
+WRITING STYLE RULES:
+- Professional but conversational tone
+- Short, readable paragraphs (2-3 sentences max)
+- Natural transitions between ideas
+- First-person perspective for personal experiences
+- Clear, concise sentences
+- Avoid jargon unless explaining it
+
+CONTENT QUALITY:
+- Practical insights over generic advice
+- Educational value over promotional content
+- Credibility through specific examples
+- Concise storytelling
+- Informative rather than promotional
+
+WHAT TO AVOID:
+- Clickbait titles or exaggerated claims
+- Unnecessary hype or buzzwords
+- Generic motivational quotes
+- Excessive emojis (use sparingly, maximum 2-3 per post)
+- Rocket ships, fire emojis, or similar clickbait tactics
+- Marketing language or sales pitches
+
+LENGTH: 180-300 words total.
 
 RESEARCH INTEGRATION:
-If research results are provided, incorporate insights naturally.
+If research results are provided:
+- Incorporate insights naturally into the narrative
 - Never mention sources or URLs
 - Never copy snippets verbatim
 - Summarize findings in your own words
-- Use research to add credibility, not as the main content"""
+- Use research to add credibility, not as the main content
+- Reference key statistics or facts when relevant
+
+PERSONALIZATION:
+Use the author's profile information to:
+- Match their expertise level and voice
+- Reference their actual skills and experience
+- Align with their career goals and interests
+- Maintain consistency with their professional brand"""
 
         self.system_prompt = system_prompt
     
@@ -68,7 +92,8 @@ If research results are provided, incorporate insights naturally.
         research: Optional[List[Dict[str, str]]] = None,
         writing_style: str = "professional",
         edit_instruction: Optional[str] = None,
-        context: Optional[Context] = None
+        context: Optional[Context] = None,
+        execution_plan: Optional[object] = None
     ) -> LinkedInPost:
         """Generate a LinkedIn post based on execution context.
         
@@ -80,6 +105,7 @@ If research results are provided, incorporate insights naturally.
             writing_style: Writing style for the post.
             edit_instruction: Optional edit instruction for refining the post.
             context: Unified context object with user preferences.
+            execution_plan: Optional execution plan from Planner with structured information.
             
         Returns:
             LinkedInPost: Structured LinkedIn post with title, content, and hashtags.
@@ -99,11 +125,11 @@ If research results are provided, incorporate insights naturally.
                 # Fallback to default prompt if style not found
                 self._setup_prompt()
         
-        # Build context
-        context = self._build_context(topic, intent, user_prompt, research, profile_summary, edit_instruction)
+        # Build context with enhanced information
+        context_str = self._build_context(topic, intent, user_prompt, research, profile_summary, edit_instruction, execution_plan, context)
         
         # Create prompt
-        prompt = self._create_prompt(context)
+        prompt = self._create_prompt(context_str)
         
         # Generate content
         response = generate_text(
@@ -124,7 +150,9 @@ If research results are provided, incorporate insights naturally.
         user_prompt: str,
         research: Optional[List[Dict[str, str]]],
         profile_summary: Optional[str] = None,
-        edit_instruction: Optional[str] = None
+        edit_instruction: Optional[str] = None,
+        execution_plan: Optional[object] = None,
+        context: Optional[Context] = None
     ) -> str:
         """Build context string for the LLM.
         
@@ -135,28 +163,49 @@ If research results are provided, incorporate insights naturally.
             research: Optional research results.
             profile_summary: Optional profile summary for personalization.
             edit_instruction: Optional edit instruction for refinement.
+            execution_plan: Optional execution plan from Planner with structured information.
+            context: Optional unified context object with user preferences.
             
         Returns:
             Formatted context string.
         """
-        context = f"Topic: {topic}\n"
-        context += f"Intent: {intent}\n"
-        context += f"Original Request: {user_prompt}\n"
+        context_str = f"Topic: {topic}\n"
+        context_str += f"Intent: {intent}\n"
+        context_str += f"Original Request: {user_prompt}\n"
+        
+        # Add execution plan details if available
+        if execution_plan:
+            context_str += f"\nExecution Plan:\n"
+            if hasattr(execution_plan, 'key_points'):
+                context_str += f"Key Points: {', '.join(execution_plan.key_points)}\n"
+            if hasattr(execution_plan, 'angle'):
+                context_str += f"Angle: {execution_plan.angle}\n"
+            if hasattr(execution_plan, 'target_audience'):
+                context_str += f"Target Audience: {execution_plan.target_audience}\n"
         
         # Add profile summary if available
         if profile_summary:
-            context += f"\nAuthor Profile: {profile_summary}\n"
+            context_str += f"\nAuthor Profile: {profile_summary}\n"
+        
+        # Add additional context information
+        if context:
+            if context.expertise:
+                context_str += f"Author Expertise: {context.expertise}\n"
+            if context.niche:
+                context_str += f"Content Niche: {context.niche}\n"
+            if context.target_audience:
+                context_str += f"Target Audience: {context.target_audience}\n"
         
         if research:
-            context += "\nResearch Insights:\n"
+            context_str += "\nResearch Insights:\n"
             for i, result in enumerate(research[:3], 1):
-                context += f"- {result['title']}: {result['snippet'][:200]}...\n"
+                context_str += f"- {result['title']}: {result['snippet'][:200]}...\n"
         
         # Add edit instruction if provided
         if edit_instruction:
-            context += f"\nEdit Instruction: {edit_instruction}\n"
+            context_str += f"\nEdit Instruction: {edit_instruction}\n"
         
-        return context
+        return context_str
     
     def _create_prompt(self, context: str) -> str:
         """Create the full prompt for the LLM.

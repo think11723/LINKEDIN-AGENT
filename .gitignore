@@ -68,6 +68,11 @@ output/
 output/images/
 output/latest_post.md
 
+# Persistence directories
+memory/*.json
+memory/*.db
+scheduler/*.json
+
 # Temporary files
 test_gemini.py
 *.tmp

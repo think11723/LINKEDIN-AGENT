@@ -1,200 +1,291 @@
-"""Publisher Agent for LinkedIn Content Agent.
+"""
+LinkedIn Publisher Module
 
-This agent handles the final publishing workflow, displaying the preview
-and managing user confirmation for publishing.
+Handles publishing posts to LinkedIn API.
 """
 
-from typing import Optional
-from pathlib import Path
-from rich.console import Console
-from rich.panel import Panel
-from models.models import LinkedInPost
-from config.config import config
+import requests
+from typing import Dict, Optional
+from requests_oauthlib import OAuth2Session
+from utils.logger import logger
 
 
-console = Console()
+class LinkedInPublisher:
+    """Handles publishing content to LinkedIn."""
 
+    API_BASE_URL = "https://api.linkedin.com/v2"
 
-class PublisherAgent:
-    """Agent that manages the publishing workflow."""
-    
-    def __init__(self) -> None:
-        """Initialize the Publisher Agent."""
-        pass
-    
-    def preview(
-        self,
-        post: LinkedInPost,
-        image_path: Optional[Path] = None,
-        regeneration_count: int = 0,
-        max_regenerations: int = 5
-    ) -> str:
-        """Display preview and ask for publishing confirmation.
+    def __init__(self, session: OAuth2Session, person_urn: Optional[str] = None):
+        self.session = session
+        self.person_urn = person_urn
+
+    def get_profile_urn(self) -> str:
+        """
+        DEPRECATED: This method is no longer used.
+        Use auth.get_member_urn() instead.
+        
+        The OpenID userinfo endpoint's 'sub' field is NOT a valid LinkedIn member URN.
+        The correct method is to use the Profile API (/v2/me) via auth.get_member_urn().
+        """
+        raise DeprecationWarning(
+            "get_profile_urn() is deprecated. Use auth.get_member_urn() instead. "
+            "The OpenID 'sub' field is not a valid LinkedIn member URN for publishing."
+        )
+
+    def publish_text_post(self, text: str) -> Dict:
+        """
+        Publish a text-only post to LinkedIn.
         
         Args:
-            post: LinkedInPost to publish.
-            image_path: Optional path to generated image.
-            regeneration_count: Current regeneration count.
-            max_regenerations: Maximum allowed regenerations.
+            text: The text content of the post
             
         Returns:
-            str: User choice - 'publish', 'regenerate', 'edit', or 'cancel'.
+            Response data from LinkedIn API
+            
+        Raises:
+            ValueError: If person_urn is not set
+            Exception: If API request fails
         """
-        self._display_preview(post, image_path)
-        
-        # Ask for confirmation
-        console.print("\n[bold]Do you want to publish this?[/bold]\n")
-        console.print("[cyan][Y][/cyan] Publish")
-        
-        # Show regenerate option if under limit
-        if regeneration_count < max_regenerations:
-            console.print(f"[cyan][R][/cyan] Regenerate [dim]({regeneration_count}/{max_regenerations})[/dim]")
-        else:
-            console.print(f"[dim][R] Regenerate (limit reached)[/dim]")
-        
-        console.print("[cyan][E][/cyan] Edit")
-        console.print("[cyan][N][/cyan] Cancel\n")
-        
-        choice = console.input("[bold cyan]➜ [/bold cyan]").strip().upper()
-        
-        if choice == "Y":
-            return "publish"
-        elif choice == "R" and regeneration_count < max_regenerations:
-            return "regenerate"
-        elif choice == "E":
-            return "edit"
-        elif choice == "R":
-            console.print("\n[yellow]⚠[/yellow] [dim]Regeneration limit reached.[/dim]\n")
-            return "cancel"
-        else:
-            console.print("\n[dim]✓ Cancelled.[/dim]\n")
-            return "cancel"
-    
-    def publish(self, post: LinkedInPost, image_path: Optional[Path] = None) -> None:
-        """Publish the LinkedIn post.
-        
-        For V1, this saves the post for manual publishing.
-        In future versions, this will integrate with LinkedIn API.
+        if not self.person_urn:
+            raise ValueError(
+                "person_urn is required. Use auth.get_member_urn() to retrieve it before publishing."
+            )
+
+        share_url = f"{self.API_BASE_URL}/ugcPosts"
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-Restli-Protocol-Version": "2.0.0"
+        }
+
+        payload = {
+            "author": self.person_urn,
+            "lifecycleState": "PUBLISHED",
+            "specificContent": {
+                "com.linkedin.ugc.ShareContent": {
+                    "shareCommentary": {
+                        "text": text
+                    },
+                    "shareMediaCategory": "NONE"
+                }
+            },
+            "visibility": {
+                "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
+            }
+        }
+
+        logger.info(f"Publishing text post to: {share_url}")
+        logger.info(f"Request headers: {headers}")
+        logger.info(f"Request payload: {payload}")
+
+        try:
+            response = self.session.post(
+                share_url,
+                json=payload,
+                headers=headers
+            )
+
+            logger.info(f"Response Status Code: {response.status_code}")
+            logger.info(f"Response Body: {response.text}")
+
+            response.raise_for_status()
+
+            if response.text:
+                try:
+                    return response.json()
+                except Exception:
+                    return {"response": response.text}
+
+            return {}
+
+        except Exception as e:
+            logger.error(f"Failed to publish text post: {str(e)}")
+            logger.error(f"Request URL: {share_url}")
+            logger.error(f"Request Headers: {headers}")
+            logger.error(f"Request Payload: {payload}")
+            raise Exception(f"Failed to publish text post: {str(e)}")
+
+    def upload_image(self, image_path: str) -> str:
+        """
+        Register and upload an image to LinkedIn.
         
         Args:
-            post: LinkedInPost to publish.
-            image_path: Optional path to generated image.
-        """
-        # Check if LinkedIn API is configured
-        if not self._is_linkedin_configured():
-            self._save_for_manual_publishing(post, image_path)
-        else:
-            self._publish_via_api(post, image_path)
-    
-    def _is_linkedin_configured(self) -> bool:
-        """Check if LinkedIn API credentials are configured.
-        
+            image_path: Local path to the image file
+            
         Returns:
-            bool: True if LinkedIn API is configured, False otherwise.
+            Asset URN of the uploaded image
+            
+        Raises:
+            ValueError: If person_urn is not set
+            Exception: If upload fails
         """
-        return bool(
-            config.linkedin_access_token and
-            config.linkedin_client_id and
-            config.linkedin_client_secret
-        )
-    
-    def _save_for_manual_publishing(
-        self,
-        post: LinkedInPost,
-        image_path: Optional[Path]
-    ) -> None:
-        """Save post for manual LinkedIn publishing.
-        
-        Args:
-            post: LinkedInPost to save.
-            image_path: Optional path to generated image.
-        """
-        # Save as markdown
-        save_markdown(post)
-        
-        # If image exists, mention it
-        if image_path and image_path.exists():
-            console.print(f"\n[green]✓[/green] [dim]Image saved to:[/dim] [cyan]{image_path}[/cyan]")
-        
-        console.print("\n")
-        console.print(Panel(
-            "[bold green]✓ Ready for manual LinkedIn posting[/bold green]",
-            border_style="green",
-            padding=(0, 2)
-        ))
-        console.print(f"[dim]Post saved to: {config.output_dir / 'latest_post.md'}[/dim]")
-        console.print("\n")
-    
-    def _publish_via_api(
-        self,
-        post: LinkedInPost,
-        image_path: Optional[Path]
-    ) -> None:
-        """Publish via LinkedIn API (placeholder for future implementation).
-        
-        Args:
-            post: LinkedInPost to publish.
-            image_path: Optional path to generated image.
-        """
-        console.print("[yellow]LinkedIn API publishing coming soon![/yellow]")
-        console.print("[dim]Falling back to manual publishing...[/dim]")
-        self._save_for_manual_publishing(post, image_path)
-    
-    def _display_preview(
-        self,
-        post: LinkedInPost,
-        image_path: Optional[Path]
-    ) -> None:
-        """Display a beautiful preview of the post.
-        
-        Args:
-            post: LinkedInPost to display.
-            image_path: Optional path to generated image.
-        """
-        console.print("\n")
-        
-        # Header
-        console.print(Panel(
-            "[bold cyan]LinkedIn Post Preview[/bold cyan]",
-            border_style="cyan",
-            padding=(0, 2)
-        ))
-        
-        # Post content
-        console.print(f"\n[bold]{post.title}[/bold]")
-        console.print(f"{post.content}\n")
-        
-        # Hashtags
-        console.print(f"[dim]{', '.join(post.hashtags)}[/dim]\n")
-        
-        # Image info
-        if image_path and image_path.exists():
-            console.print(Panel(
-                f"[green]✓ Image generated[/green]\n[dim]Path: {image_path}[/dim]",
-                title="[bold]Image[/bold]",
-                border_style="green",
-                padding=(0, 2)
-            ))
-        else:
-            console.print(Panel(
-                "[dim]✗ No image generated[/dim]",
-                title="[bold]Image[/bold]",
-                border_style="dim",
-                padding=(0, 2)
-            ))
+        if not self.person_urn:
+            raise ValueError(
+                "person_urn is required. Use auth.get_member_urn() to retrieve it before uploading."
+            )
 
+        register_url = f"{self.API_BASE_URL}/assets?action=registerUpload"
 
-if __name__ == "__main__":
-    # Test the Publisher Agent
-    console.print("[bold]Testing Publisher Agent[/bold]\n")
-    
-    # Create sample LinkedInPost
-    sample_post = LinkedInPost(
-        title="The Future of AI Agents",
-        content="AI agents are transforming how we work. From automating repetitive tasks to providing intelligent assistance, these systems are becoming indispensable. The future looks promising with more sophisticated agents emerging.",
-        hashtags=["#AI", "#Agents", "#Technology", "#Future"]
-    )
-    
-    # Test preview
-    publisher = PublisherAgent()
-    publisher.preview(sample_post)
+        headers = {
+            "Content-Type": "application/json",
+            "X-Restli-Protocol-Version": "2.0.0"
+        }
+
+        register_payload = {
+            "registerUploadRequest": {
+                "owner": self.person_urn,
+                "recipes": [
+                    "urn:li:digitalmediaAsset:jpeg"
+                ],
+                "serviceRelationships": [
+                    {
+                        "relationshipType": "OWNER",
+                        "identifier": "urn:li:userGeneratedContent"
+                    }
+                ],
+                "supportedUploadMechanism": [
+                    "BINARY_UPLOAD"
+                ]
+            }
+        }
+
+        logger.info(f"Registering image upload at: {register_url}")
+        logger.info(f"Request headers: {headers}")
+        logger.info(f"Request payload: {register_payload}")
+
+        try:
+            response = self.session.post(
+                register_url,
+                json=register_payload,
+                headers=headers
+            )
+
+            logger.info(f"Register Response Status: {response.status_code}")
+            logger.info(f"Register Response Body: {response.text}")
+
+            response.raise_for_status()
+
+            register_data = response.json()
+
+            value = register_data["value"]
+
+            upload_url = value["uploadMechanism"][
+                "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"
+            ]["uploadUrl"]
+
+            asset_urn = value["asset"]
+
+            logger.info(f"Upload URL: {upload_url}")
+            logger.info(f"Asset URN: {asset_urn}")
+
+            # Read and upload the image
+            with open(image_path, "rb") as f:
+                image_data = f.read()
+
+            logger.info(f"Uploading image from: {image_path}")
+
+            upload_response = requests.put(
+                upload_url,
+                data=image_data,
+                headers={
+                    "Content-Type": "application/octet-stream"
+                }
+            )
+
+            logger.info(f"Upload Response Status: {upload_response.status_code}")
+            logger.info(f"Upload Response Body: {upload_response.text}")
+
+            upload_response.raise_for_status()
+
+            logger.info(f"Image uploaded successfully. Asset URN: {asset_urn}")
+
+            return asset_urn
+
+        except Exception as e:
+            logger.error(f"Failed to upload image: {str(e)}")
+            logger.error(f"Register URL: {register_url}")
+            logger.error(f"Request Headers: {headers}")
+            logger.error(f"Request Payload: {register_payload}")
+            raise Exception(f"Failed to upload image: {str(e)}")
+
+    def publish_image_post(self, text: str, image_path: str) -> Dict:
+        """
+        Publish an image post to LinkedIn.
+        
+        Args:
+            text: The text content of the post
+            image_path: Local path to the image file
+            
+        Returns:
+            Response data from LinkedIn API
+            
+        Raises:
+            Exception: If upload or publishing fails
+        """
+        asset_urn = self.upload_image(image_path)
+
+        share_url = f"{self.API_BASE_URL}/ugcPosts"
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-Restli-Protocol-Version": "2.0.0"
+        }
+
+        payload = {
+            "author": self.person_urn,
+            "lifecycleState": "PUBLISHED",
+            "specificContent": {
+                "com.linkedin.ugc.ShareContent": {
+                    "shareCommentary": {
+                        "text": text
+                    },
+                    "shareMediaCategory": "IMAGE",
+                    "media": [
+                        {
+                            "status": "READY",
+                            "media": asset_urn,
+                            "description": {
+                                "text": text
+                            },
+                            "title": {
+                                "text": "Image"
+                            }
+                        }
+                    ]
+                }
+            },
+            "visibility": {
+                "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
+            }
+        }
+
+        logger.info(f"Publishing image post to: {share_url}")
+        logger.info(f"Request headers: {headers}")
+        logger.info(f"Request payload: {payload}")
+
+        try:
+            response = self.session.post(
+                share_url,
+                json=payload,
+                headers=headers
+            )
+
+            logger.info(f"Response Status Code: {response.status_code}")
+            logger.info(f"Response Body: {response.text}")
+
+            response.raise_for_status()
+
+            if response.text:
+                try:
+                    return response.json()
+                except Exception:
+                    return {"response": response.text}
+
+            return {}
+
+        except Exception as e:
+            logger.error(f"Failed to publish image post: {str(e)}")
+            logger.error(f"Request URL: {share_url}")
+            logger.error(f"Request Headers: {headers}")
+            logger.error(f"Request Payload: {payload}")
+            raise Exception(f"Failed to publish image post: {str(e)}")

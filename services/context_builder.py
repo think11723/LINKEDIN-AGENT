@@ -20,12 +20,13 @@ class ContextBuilder:
     and other user-specific information into a single Context object.
     """
     
-    def build(self, writing_style: Optional[str] = None) -> Context:
+    def build(self, writing_style: Optional[str] = None, topic: Optional[str] = None) -> Context:
         """Build the unified context object.
         
         Args:
             writing_style: Optional writing style to use. If not provided,
                           will use default or detect from profile.
+            topic: Optional topic for memory retrieval.
             
         Returns:
             Context object with all user-specific information.
@@ -72,6 +73,17 @@ class ContextBuilder:
         # Load style prompt
         style_prompt = load_style_prompt(writing_style)
         
+        # Retrieve memory context if topic is provided
+        memory_context = None
+        if topic:
+            try:
+                from memory.service import MemoryService
+                memory_service = MemoryService()
+                memory_context = memory_service.get_memory_context_string(topic, k=3)
+                logger.info("Memory context retrieved successfully")
+            except Exception as e:
+                logger.warning(f"Failed to retrieve memory context: {e}")
+        
         # Build context
         context = Context(
             profile=profile,
@@ -91,9 +103,10 @@ class ContextBuilder:
             temperature=0.7,
             metadata={
                 "style_prompt": style_prompt,
-                "has_profile": profile is not None
+                "has_profile": profile is not None,
+                "memory_context": memory_context
             }
         )
         
-        logger.info(f"Context built successfully. Has profile: {context.has_profile()}")
+        logger.info(f"Context built successfully. Has profile: {context.has_profile()}, Has memory: {memory_context is not None}")
         return context

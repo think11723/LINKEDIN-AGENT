@@ -18,14 +18,41 @@ from services.llm import generate_text
 console = Console()
 
 
+class DimensionScore(BaseModel):
+    """Score for a specific evaluation dimension with explanation."""
+    
+    score: int = Field(description="Score (1-10)")
+    explanation: str = Field(description="Short explanation for the score")
+
+
 class ReviewScores(BaseModel):
     """Scores for different aspects of the LinkedIn post."""
     
+    # Legacy scores for backward compatibility
     clarity: int = Field(description="Clarity score (1-10)")
     engagement: int = Field(description="Engagement score (1-10)")
     authenticity: int = Field(description="Authenticity score (1-10)")
     readability: int = Field(description="Readability score (1-10)")
     overall: int = Field(description="Overall score (1-10)")
+    
+    # New detailed dimensions
+    hook_strength: Optional[DimensionScore] = Field(default=None, description="Hook strength evaluation")
+    logical_flow: Optional[DimensionScore] = Field(default=None, description="Logical flow evaluation")
+    professional_tone: Optional[DimensionScore] = Field(default=None, description="Professional tone evaluation")
+    educational_value: Optional[DimensionScore] = Field(default=None, description="Educational value evaluation")
+    credibility: Optional[DimensionScore] = Field(default=None, description="Credibility evaluation")
+    cta_quality: Optional[DimensionScore] = Field(default=None, description="Call-to-action quality evaluation")
+    hashtag_relevance: Optional[DimensionScore] = Field(default=None, description="Hashtag relevance evaluation")
+
+
+class ReviewDecision(BaseModel):
+    """Final review decision with confidence."""
+    
+    decision: str = Field(description="Decision: Approved, Needs Revision, or Rejected")
+    confidence: str = Field(description="Confidence level: High, Medium, or Low")
+    strengths: List[str] = Field(default_factory=list, description="Key strengths identified")
+    weaknesses: List[str] = Field(default_factory=list, description="Key weaknesses identified")
+    improvement_suggestions: List[str] = Field(default_factory=list, description="Top 3 improvement suggestions")
 
 
 class ReviewResult(BaseModel):
@@ -36,6 +63,7 @@ class ReviewResult(BaseModel):
     scores: ReviewScores = Field(description="Review scores")
     feedback: str = Field(description="Feedback on the post")
     was_improved: bool = Field(description="Whether the post was improved")
+    decision: Optional[ReviewDecision] = Field(default=None, description="Detailed review decision")
 
 
 class ReviewerAgent:
@@ -47,29 +75,69 @@ class ReviewerAgent:
     
     def _setup_prompts(self) -> None:
         """Set up prompts for reviewing and improving posts."""
-        self.review_prompt = """You are an expert editor for LinkedIn content.
-Review the following LinkedIn post and provide:
+        self.review_prompt = """You are an expert editor for LinkedIn content with deep expertise in professional communication.
+Review the following LinkedIn post and provide a comprehensive evaluation.
 
-1. Scores (1-10) for:
-   - Clarity: How clear and understandable is the message?
-   - Engagement: How likely is this to generate engagement?
-   - Authenticity: Does it sound genuine and not like marketing copy?
-   - Readability: Is it easy to read and well-structured?
-   - Overall: Overall quality score
+EVALUATION DIMENSIONS (score 1-10 with explanation):
 
-2. Brief feedback (2-3 sentences) on strengths and areas for improvement.
+1. Hook Strength: Does the opening grab attention? Is it compelling?
+2. Readability: Is it easy to read? Are paragraphs short and clear?
+3. Logical Flow: Do ideas transition naturally? Is there a clear structure?
+4. Professional Tone: Is the tone appropriate for LinkedIn? Not too casual or formal?
+5. Educational Value: Does it provide practical insights or learning?
+6. Credibility: Does it sound authentic? Avoids exaggeration and clickbait?
+7. Call-to-Action Quality: Is there a clear, relevant CTA?
+8. Hashtag Relevance: Are hashtags appropriate and not excessive?
+
+LEGACY SCORES (1-10):
+- Clarity: How clear and understandable is the message?
+- Engagement: How likely is this to generate engagement?
+- Authenticity: Does it sound genuine and not like marketing copy?
+- Readability: Is it easy to read and well-structured?
+- Overall: Overall quality score
+
+FINAL DECISION:
+Based on all dimensions, provide:
+- Decision: Approved, Needs Revision, or Rejected
+- Confidence: High, Medium, or Low
+- Strengths: List 2-3 key strengths
+- Weaknesses: List 2-3 key weaknesses
+- Improvement Suggestions: Top 3 specific, actionable suggestions
+
+FEEDBACK STYLE:
+- Be constructive and specific
+- Explain why something is good or needs improvement
+- Avoid vague comments like "could be better"
+- Focus on actionable feedback
 
 POST TITLE: {title}
 POST CONTENT: {content}
 HASHTAGS: {hashtags}
 
 Return your response in this format:
+
+HOOK_STRENGTH: [score] | [explanation]
+READABILITY: [score] | [explanation]
+LOGICAL_FLOW: [score] | [explanation]
+PROFESSIONAL_TONE: [score] | [explanation]
+EDUCATIONAL_VALUE: [score] | [explanation]
+CREDIBILITY: [score] | [explanation]
+CTA_QUALITY: [score] | [explanation]
+HASHTAG_RELEVANCE: [score] | [explanation]
+
 CLARITY: [score]
 ENGAGEMENT: [score]
 AUTHENTICITY: [score]
 READABILITY: [score]
 OVERALL: [score]
-FEEDBACK: [feedback]"""
+
+DECISION: [Approved/Needs Revision/Rejected]
+CONFIDENCE: [High/Medium/Low]
+STRENGTHS: [strength 1, strength 2, strength 3]
+WEAKNESSES: [weakness 1, weakness 2, weakness 3]
+IMPROVEMENT_SUGGESTIONS: [suggestion 1, suggestion 2, suggestion 3]
+
+FEEDBACK: [2-3 sentence summary feedback]"""
 
         self.improve_prompt = """You are an expert editor for LinkedIn content.
 Improve the following LinkedIn post while preserving the original meaning and intent.
@@ -107,10 +175,10 @@ HASHTAGS: [improved hashtags]"""
         Returns:
             ReviewResult with scores, feedback, and potentially improved post.
         """
-        # Get review scores
-        scores, feedback = self._get_review(post)
+        # Get comprehensive review
+        scores, feedback, decision = self._get_review(post)
         
-        # Decide whether to improve
+        # Decide whether to improve based on overall score
         if scores.overall >= 8:
             final_post = post
             was_improved = False
@@ -123,17 +191,18 @@ HASHTAGS: [improved hashtags]"""
             final_post=final_post,
             scores=scores,
             feedback=feedback,
-            was_improved=was_improved
+            was_improved=was_improved,
+            decision=decision
         )
     
-    def _get_review(self, post: LinkedInPost) -> tuple[ReviewScores, str]:
-        """Get review scores and feedback for a post.
+    def _get_review(self, post: LinkedInPost) -> tuple[ReviewScores, str, Optional[ReviewDecision]]:
+        """Get review scores, feedback, and decision for a post.
         
         Args:
             post: LinkedInPost to review.
             
         Returns:
-            Tuple of ReviewScores and feedback string.
+            Tuple of ReviewScores, feedback string, and ReviewDecision.
         """
         prompt = self.review_prompt.format(
             title=post.title,
@@ -149,17 +218,18 @@ HASHTAGS: [improved hashtags]"""
         
         return self._parse_review_response(response)
     
-    def _parse_review_response(self, response: str) -> tuple[ReviewScores, str]:
+    def _parse_review_response(self, response: str) -> tuple[ReviewScores, str, Optional[ReviewDecision]]:
         """Parse the review response from LLM.
         
         Args:
             response: Raw response from LLM.
             
         Returns:
-            Tuple of ReviewScores and feedback string.
+            Tuple of ReviewScores, feedback string, and ReviewDecision.
         """
         lines = response.split('\n')
         
+        # Legacy scores (backward compatibility)
         clarity = 7
         engagement = 7
         authenticity = 7
@@ -167,10 +237,25 @@ HASHTAGS: [improved hashtags]"""
         overall = 7
         feedback = "Post looks good."
         
+        # New dimension scores
+        hook_strength = None
+        logical_flow = None
+        professional_tone = None
+        educational_value = None
+        credibility = None
+        cta_quality = None
+        hashtag_relevance = None
+        
+        # Decision fields
+        decision = "Needs Revision"
+        confidence = "Medium"
+        strengths = []
+        weaknesses = []
+        improvement_suggestions = []
+        
         def extract_score(value_str: str) -> int:
             """Extract integer score from various formats (e.g., '9', '9/10', '9 out of 10')."""
             value_str = value_str.strip()
-            # Handle formats like '9/10', '9 out of 10', etc.
             if '/' in value_str:
                 value_str = value_str.split('/')[0].strip()
             elif 'out of' in value_str.lower():
@@ -178,33 +263,85 @@ HASHTAGS: [improved hashtags]"""
             try:
                 return int(value_str)
             except ValueError:
-                return 7  # Default score if parsing fails
+                return 7
+        
+        def parse_dimension_score(line: str, key: str) -> Optional[DimensionScore]:
+            """Parse dimension score in format: KEY: score | explanation"""
+            if line.startswith(key + ":"):
+                value_str = line.replace(key + ":", "").strip()
+                if "|" in value_str:
+                    parts = value_str.split("|", 1)
+                    score = extract_score(parts[0])
+                    explanation = parts[1].strip()
+                    return DimensionScore(score=score, explanation=explanation)
+            return None
         
         for line in lines:
             line = line.strip()
             
+            # Parse dimension scores
+            hook_strength = parse_dimension_score(line, "HOOK_STRENGTH") or hook_strength
+            logical_flow = parse_dimension_score(line, "LOGICAL_FLOW") or logical_flow
+            professional_tone = parse_dimension_score(line, "PROFESSIONAL_TONE") or professional_tone
+            educational_value = parse_dimension_score(line, "EDUCATIONAL_VALUE") or educational_value
+            credibility = parse_dimension_score(line, "CREDIBILITY") or credibility
+            cta_quality = parse_dimension_score(line, "CTA_QUALITY") or cta_quality
+            hashtag_relevance = parse_dimension_score(line, "HASHTAG_RELEVANCE") or hashtag_relevance
+            readability = parse_dimension_score(line, "READABILITY") or DimensionScore(score=7, explanation="Default") if readability is None else readability
+            
+            # Parse legacy scores
             if line.startswith("CLARITY:"):
                 clarity = extract_score(line.replace("CLARITY:", ""))
             elif line.startswith("ENGAGEMENT:"):
                 engagement = extract_score(line.replace("ENGAGEMENT:", ""))
             elif line.startswith("AUTHENTICITY:"):
                 authenticity = extract_score(line.replace("AUTHENTICITY:", ""))
-            elif line.startswith("READABILITY:"):
-                readability = extract_score(line.replace("READABILITY:", ""))
             elif line.startswith("OVERALL:"):
                 overall = extract_score(line.replace("OVERALL:", ""))
             elif line.startswith("FEEDBACK:"):
                 feedback = line.replace("FEEDBACK:", "").strip()
+            
+            # Parse decision
+            elif line.startswith("DECISION:"):
+                decision = line.replace("DECISION:", "").strip()
+            elif line.startswith("CONFIDENCE:"):
+                confidence = line.replace("CONFIDENCE:", "").strip()
+            elif line.startswith("STRENGTHS:"):
+                strengths_str = line.replace("STRENGTHS:", "").strip()
+                strengths = [s.strip() for s in strengths_str.split(",")]
+            elif line.startswith("WEAKNESSES:"):
+                weaknesses_str = line.replace("WEAKNESSES:", "").strip()
+                weaknesses = [w.strip() for w in weaknesses_str.split(",")]
+            elif line.startswith("IMPROVEMENT_SUGGESTIONS:"):
+                suggestions_str = line.replace("IMPROVEMENT_SUGGESTIONS:", "").strip()
+                improvement_suggestions = [s.strip() for s in suggestions_str.split(",")]
         
+        # Build scores object
         scores = ReviewScores(
             clarity=clarity,
             engagement=engagement,
             authenticity=authenticity,
-            readability=readability,
-            overall=overall
+            readability=readability.score if isinstance(readability, DimensionScore) else readability,
+            overall=overall,
+            hook_strength=hook_strength,
+            logical_flow=logical_flow,
+            professional_tone=professional_tone,
+            educational_value=educational_value,
+            credibility=credibility,
+            cta_quality=cta_quality,
+            hashtag_relevance=hashtag_relevance
         )
         
-        return scores, feedback
+        # Build decision object
+        review_decision = ReviewDecision(
+            decision=decision,
+            confidence=confidence,
+            strengths=strengths,
+            weaknesses=weaknesses,
+            improvement_suggestions=improvement_suggestions
+        )
+        
+        return scores, feedback, review_decision
     
     def _improve_post(self, post: LinkedInPost) -> LinkedInPost:
         """Improve a LinkedIn post based on review.
@@ -250,7 +387,7 @@ def print_review_result(result: ReviewResult) -> None:
     """
     console.print("\n")
     
-    # Scores table
+    # Legacy scores table (backward compatibility)
     table = Table(
         title="[bold]Review Scores[/bold]",
         show_header=True,
@@ -261,7 +398,6 @@ def print_review_result(result: ReviewResult) -> None:
     table.add_column("[dim]Aspect[/dim]", style="cyan", width=15)
     table.add_column("[dim]Score[/dim]", justify="right", width=10)
     
-    # Color-code scores
     def get_score_color(score: int) -> str:
         return "green" if score >= 8 else "yellow" if score >= 6 else "red"
     
@@ -272,6 +408,46 @@ def print_review_result(result: ReviewResult) -> None:
     table.add_row(f"[bold {get_score_color(result.scores.overall)}]Overall[/bold {get_score_color(result.scores.overall)}]", f"[{get_score_color(result.scores.overall)}]{result.scores.overall}/10[/{get_score_color(result.scores.overall)}]")
     
     console.print(table)
+    
+    # Detailed dimensions if available
+    if result.scores.hook_strength or result.scores.logical_flow:
+        console.print("\n[bold cyan]═══ Detailed Evaluation ═══[/bold cyan]")
+        
+        dimensions = [
+            ("Hook Strength", result.scores.hook_strength),
+            ("Logical Flow", result.scores.logical_flow),
+            ("Professional Tone", result.scores.professional_tone),
+            ("Educational Value", result.scores.educational_value),
+            ("Credibility", result.scores.credibility),
+            ("CTA Quality", result.scores.cta_quality),
+            ("Hashtag Relevance", result.scores.hashtag_relevance),
+        ]
+        
+        for name, dim in dimensions:
+            if dim:
+                console.print(f"[dim]{name}:[/dim] [{get_score_color(dim.score)}]{dim.score}/10[/{get_score_color(dim.score)}] - {dim.explanation}")
+    
+    # Decision if available
+    if result.decision:
+        console.print(f"\n[bold cyan]═══ Review Decision ═══[/bold cyan]")
+        decision_color = "green" if result.decision.decision == "Approved" else "yellow" if result.decision.decision == "Needs Revision" else "red"
+        console.print(f"[dim]Decision:[/dim] [{decision_color}]{result.decision.decision}[/{decision_color}]")
+        console.print(f"[dim]Confidence:[/dim] {result.decision.confidence}")
+        
+        if result.decision.strengths:
+            console.print(f"\n[dim]Strengths:[/dim]")
+            for strength in result.decision.strengths:
+                console.print(f"  • {strength}")
+        
+        if result.decision.weaknesses:
+            console.print(f"\n[dim]Weaknesses:[/dim]")
+            for weakness in result.decision.weaknesses:
+                console.print(f"  • {weakness}")
+        
+        if result.decision.improvement_suggestions:
+            console.print(f"\n[dim]Top Improvement Suggestions:[/dim]")
+            for i, suggestion in enumerate(result.decision.improvement_suggestions, 1):
+                console.print(f"  {i}. {suggestion}")
     
     # Feedback
     console.print(f"\n[dim]Feedback:[/dim] {result.feedback}\n")

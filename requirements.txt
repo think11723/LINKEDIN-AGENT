@@ -3,6 +3,7 @@ langchain==0.2.17
 langchain-core==0.2.43
 langchain-community==0.2.19
 langchain-google-genai==1.0.10
+langgraph==0.2.45
 
 python-dotenv==1.0.1
 pydantic==2.9.2
@@ -18,3 +19,10 @@ duckduckgo-search==6.3.5
 # Image
 Pillow>=11.0.0
 requests==2.32.3
+
+# LinkedIn OAuth
+requests-oauthlib>=1.3.0
+
+# Testing
+pytest>=7.4.0
+pytest-mock>=3.11.0

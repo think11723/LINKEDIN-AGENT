@@ -4,12 +4,13 @@
 
 ![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
 ![LangChain](https://img.shields.io/badge/LangChain-0.2+-green.svg)
+![LangGraph](https://img.shields.io/badge/LangGraph-0.2+-purple.svg)
 ![Gemini](https://img.shields.io/badge/Gemini-API-orange.svg)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 **An intelligent multi-agent system for generating professional LinkedIn content**
 
-[Features](#features) • [Architecture](#architecture) • [Installation](#installation) • [Usage](#usage)
+[Features](#features) • [Architecture](#architecture) • [Installation](#installation) • [Usage](#usage) • [Testing](#testing)
 
 </div>
 
@@ -17,9 +18,9 @@
 
 ## Overview
 
-The AI LinkedIn Content Agent is a sophisticated multi-agent system that leverages Large Language Models (LLMs) to generate high-quality, personalized LinkedIn posts. Built with LangChain and powered by Google's Gemini AI, this system orchestrates multiple specialized agents to plan, research, write, review, and enhance content with AI-generated images.
+The AI LinkedIn Content Agent is a sophisticated multi-agent system that leverages Large Language Models (LLMs) to generate high-quality, personalized LinkedIn posts. Built with LangChain, LangGraph, and powered by Google's Gemini AI, this system orchestrates multiple specialized agents to plan, research, write, review, and publish content with optional image attachments and scheduled publishing capabilities.
 
-The agent uses a modular architecture where each component has a specific responsibility—from planning the content strategy to generating relevant images—ensuring professional, engaging, and authentic LinkedIn posts tailored to your profile and preferences.
+The agent uses a modular architecture where each component has a specific responsibility—from planning the content strategy to publishing to LinkedIn—ensuring professional, engaging, and authentic LinkedIn posts tailored to your profile and preferences.
 
 ---
 
@@ -29,38 +30,60 @@ The agent uses a modular architecture where each component has a specific respon
 - **Planning Agent** - Analyzes user intent and creates execution plans
 - **Research Agent** - Performs web search for current information
 - **Writer Agent** - Generates content with personalization
-- **Reviewer Agent** - Scores and improves content quality
-- **Image Prompt Agent** - Creates detailed image generation prompts
-- **Publisher Agent** - Manages preview and publishing workflow
+- **Reviewer Agent** - Multi-dimensional scoring and improvement
+- **LangGraph Orchestration** - Graph-based workflow execution
+
+### 🧠 Memory System (RAG)
+- **Content Memory** - Stores previous posts for context enrichment
+- **Semantic Retrieval** - Finds relevant past posts using vector similarity
+- **Avoids Repetition** - Helps maintain originality and consistency
+- **Lightweight Embeddings** - 32-dimensional vectors via LLM
+- **Persistent Storage** - Survives application restarts
+
+### ⏰ Scheduled Publishing
+- **Flexible Scheduling** - Schedule posts by minutes, hours, or specific time
+- **Job Persistence** - Scheduled jobs survive application restarts
+- **Automatic Execution** - Background runner executes scheduled jobs
+- **Retry Logic** - Automatic retry on publishing failures
+- **Image Support** - Schedule posts with attached images
+
+### 🖼️ Image Support
+- **Optional Attachments** - Attach images to posts (PNG, JPG, JPEG, WEBP)
+- **Validation** - File existence and format validation
+- **Publish with Image** - LinkedIn API image upload
+- **Schedule with Image** - Persist image path in scheduled jobs
+- **Fallback Option** - Publish text-only if image fails
+
+### 🔗 LinkedIn Integration
+- **OAuth Authentication** - Secure LinkedIn OAuth2 flow
+- **Direct Publishing** - Publish text and image posts to LinkedIn
+- **Token Storage** - Persistent token management
+- **Error Handling** - Graceful failure with clear messages
 
 ### 🎨 Content Personalization
 - **User Profile System** - Loads your professional background, skills, and achievements
-- **Writing Style Detection** - Automatically detects preferred writing style (professional, casual, beginner-friendly, etc.)
+- **Writing Style Detection** - Automatically detects preferred writing style
 - **Style Templates** - Multiple pre-configured writing style prompts
 - **Context-Aware Generation** - Incorporates your expertise and experience
 
 ### 🔄 Human-in-the-Loop Workflow
-- **Regeneration** - Regenerate content up to 5 times with counter tracking
+- **Regeneration** - Regenerate content with automatic retry logic
 - **Edit Workflow** - Provide feedback to refine content
-- **Preview System** - Rich terminal UI for content and image preview
-- **Choice Selection** - Publish, regenerate, edit, or cancel options
+- **Preview System** - Rich terminal UI for content preview
+- **Choice Selection** - Publish, schedule, regenerate, edit, save, or cancel
 
 ### 🎯 Quality Assurance
-- **Automated Review** - Scores content on clarity, engagement, authenticity, and readability
+- **Multi-Dimensional Review** - Scores content on 8 dimensions
 - **Auto-Improvement** - Automatically improves content if scores are below threshold
 - **Structured Output** - Consistent title, content, and hashtags format
-
-### 🖼️ AI Image Generation
-- **Image Prompt Generation** - Creates detailed prompts for AI image models
-- **Style Selection** - Multiple illustration styles (minimalist, corporate, abstract, etc.)
-- **Automatic Download** - Downloads and saves generated images
-- **Aspect Ratio Support** - Configurable image dimensions
+- **Decision Logic** - Clear approve/reject decisions with confidence
 
 ### 💻 Developer Experience
 - **Rich Terminal UI** - Beautiful console output with colors and formatting
 - **Configuration System** - Environment-based configuration
 - **Modular Codebase** - Clean separation of concerns
 - **Error Handling** - Graceful error messages and recovery
+- **Test Suite** - Automated tests for critical functionality
 
 ---
 
@@ -73,52 +96,53 @@ The system follows a modular architecture with clear separation of concerns:
 **Agents** - AI reasoning and content generation
 - Planner: Analyzes intent and creates execution plans
 - Writer: Generates LinkedIn content with personalization
-- Reviewer: Scores and improves content quality
-- Image Prompt: Creates detailed image generation prompts
+- Reviewer: Multi-dimensional scoring and improvement
 
 **Services** - External integrations and utilities
-- Search: Web search via DuckDuckGo
+- Context Builder: Builds unified context from profile and memory
+- Research: Web search via DuckDuckGo
 - LLM: Gemini AI wrapper for text generation
-- LinkedIn: Publishing workflow (placeholder for future API integration)
-- Image Generation: AI image generation service
+- LinkedIn: OAuth authentication and publishing
+- Memory: RAG system for content memory
+- Scheduler: Job scheduling and execution
 
 **Workflows** - Orchestration and execution flow
-- CLI Workflow: Terminal-based content creation pipeline
+- LangGraph Workflow: Graph-based content creation pipeline
+- Scheduler Runner: Background job execution
 
-The system follows a pipeline architecture where each agent processes the output of the previous agent:
+The system follows a pipeline architecture orchestrated by LangGraph:
 
 ```mermaid
 graph TD
-    A[User Input] --> B[Planner Agent]
-    B --> C{Research Required?}
-    C -->|Yes| D[Search Tool]
-    C -->|No| E[Writer Agent]
-    D --> E
+    A[User Input] --> B[Context Builder]
+    B --> C[Research Service]
+    C --> D[Planner Agent]
+    D --> E[Writer Agent]
     E --> F[Reviewer Agent]
-    F --> G{Scores >= 8?}
-    G -->|Yes| H[Image Prompt Agent]
-    G -->|No| I[Improvement]
-    I --> H
-    H --> J[Image Generator]
-    J --> K[Publisher Agent]
-    K --> L{User Choice}
-    L -->|Publish| M[Save Output]
-    L -->|Regenerate| E
-    L -->|Edit| N[Edit Workflow]
-    N --> E
-    L -->|Cancel| O[End]
+    F --> G{Approved?}
+    G -->|Yes| H[Memory Index]
+    G -->|No| E
+    H --> I[User Choice]
+    I -->|Publish Now| J[LinkedIn Service]
+    I -->|Schedule| K[Scheduler Service]
+    I -->|Attach Image| L[Image Attachment]
+    I -->|Regenerate| D
+    I -->|Edit| M[Edit Workflow]
+    M --> D
+    I -->|Cancel| N[End]
 ```
 
 ### Agent Responsibilities
 
 | Agent | Responsibility | Output |
 |-------|---------------|--------|
+| **Context Builder** | Builds unified context from profile, memory, and config | Context object with user info and memory |
+| **Research** | Web search for current information | Search results with titles, snippets, URLs |
 | **Planner** | Analyze intent, detect style, create plan | Execution plan with tone, intent, research flag |
-| **Search** | Web search for current information | Search results with titles, snippets, URLs |
 | **Writer** | Generate LinkedIn post with personalization | Structured post (title, content, hashtags) |
-| **Reviewer** | Score and improve content quality | Review scores, feedback, improved post |
-| **Image Prompt** | Generate image generation prompt | Image prompt with style, aspect ratio, filename |
-| **Publisher** | Preview and manage publishing workflow | User choice (publish, regenerate, edit, cancel) |
+| **Reviewer** | Multi-dimensional scoring and improvement | Review scores, feedback, decision, confidence |
+| **Memory** | Store and retrieve previous posts | Memory summary for context enrichment |
+| **Scheduler** | Schedule and execute posts | Job lifecycle management |
 
 ---
 
@@ -126,7 +150,7 @@ graph TD
 
 ```
 LINKEDIN_AGENT/
-├── app.py                  # FastAPI application entry point
+├── app.py                  # CLI application entry point
 ├── config/                 # Configuration module
 │   ├── __init__.py
 │   └── config.py           # Configuration management
@@ -134,64 +158,67 @@ LINKEDIN_AGENT/
 │   ├── __init__.py
 │   ├── planner.py          # Planning and style detection
 │   ├── writer.py           # Content generation
-│   ├── reviewer.py         # Content review and improvement
-│   ├── image_prompt.py     # Image prompt generation
-│   └── publisher.py        # Preview and publishing
+│   └── reviewer.py         # Content review and improvement
 ├── workflows/              # Workflow orchestration
 │   ├── __init__.py
-│   └── cli_workflow.py     # CLI workflow implementation
+│   ├── content_workflow.py # Workflow wrapper
+│   └── graph_workflow.py   # LangGraph workflow
 ├── services/               # External service integrations
 │   ├── __init__.py
 │   ├── llm.py              # LLM wrapper for Gemini
-│   ├── search.py           # DuckDuckGo web search
-│   ├── image_generator.py  # AI image generation
-│   └── linkedin/           # LinkedIn publishing (placeholder)
-│       ├── __init__.py
-│       └── README.md
-├── database/               # Data storage
+│   ├── research/           # Research service
+│   ├── linkedin/           # LinkedIn publishing
+│   │   ├── __init__.py
+│   │   ├── auth.py
+│   │   ├── publisher.py
+│   │   ├── service.py
+│   │   └── token_storage.py
+│   └── context_builder.py  # Context building
+├── memory/                 # RAG memory system
 │   ├── __init__.py
+│   ├── models.py
+│   ├── vector_store.py
+│   ├── embeddings.py
+│   ├── retriever.py
+│   ├── indexer.py
+│   └── service.py
+├── scheduler/              # Scheduled publishing
+│   ├── __init__.py
+│   ├── models.py
+│   ├── job_store.py
+│   ├── runner.py
+│   ├── service.py
+│   └── runner_cli.py
+├── database/               # Data storage
 │   ├── profile.json        # User profile data
 │   └── profile.template.json
 ├── models/                 # Data models
 │   ├── __init__.py
 │   ├── models.py           # Shared data models
-│   └── profile_models.py   # Profile data models
+│   ├── profile_models.py   # Profile data models
+│   └── workflow_models.py  # Workflow state models
 ├── prompts/                # Prompt templates
 │   ├── __init__.py
 │   └── styles/             # Writing style prompts
-│       ├── __init__.py
-│       ├── professional.txt
-│       ├── storytelling.txt
-│       ├── technical_deep_dive.txt
-│       ├── educational.txt
-│       ├── founder.txt
-│       ├── career_journey.txt
-│       ├── beginner_friendly.txt
-│       ├── opinion.txt
-│       ├── product_launch.txt
-│       └── hiring.txt
 ├── utils/                  # Shared utilities
 │   ├── __init__.py
-│   ├── parsers.py          # Response parsing utilities
+│   ├── draft_saver.py      # Draft saving
 │   ├── profile_manager.py  # Profile loading and validation
 │   ├── style_manager.py    # Writing style detection
 │   └── logger.py           # Logging configuration
 ├── tests/                  # Test suite
-│   └── __init__.py
-├── docs/                   # Documentation
-│   └── __init__.py
+│   ├── __init__.py
+│   ├── test_workflow.py
+│   ├── test_memory.py
+│   ├── test_scheduler.py
+│   ├── test_cli.py
+│   └── test_utils.py
 ├── output/                 # Generated content
-│   └── images/             # Generated images
+│   └── drafts/             # Saved drafts
 ├── requirements.txt        # Python dependencies
 ├── .env.example            # Environment variables template
 ├── .gitignore              # Git ignore rules
-├── README.md               # This file
-├── LICENSE                 # MIT License
-├── CHANGELOG.md            # Version history
-├── PROJECT_ARCHITECTURE.md # Detailed architecture
-├── CONTRIBUTING.md         # Contribution guidelines
-├── CODE_OF_CONDUCT.md      # Community guidelines
-└── ROADMAP.md              # Future plans
+└── README.md               # This file
 ```
 
 ---
@@ -203,12 +230,13 @@ LINKEDIN_AGENT/
 - Python 3.11 or higher
 - pip (Python package manager)
 - Gemini API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
+- LinkedIn API credentials (for publishing)
 
 ### Step 1: Clone the Repository
 
 ```bash
 git clone https://github.com/think11723/LINKEDIN-AGENT.git
-cd LINKEDIN-AGENT
+cd LINKEDIN_AGENT
 ```
 
 ### Step 2: Create Virtual Environment
@@ -235,17 +263,23 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env` and add your API key:
+Edit `.env` and add your API keys:
 
 ```env
+# Gemini AI Configuration
 GEMINI_API_KEY=your_gemini_api_key_here
 MODEL_NAME=gemini-3.5-flash
 TEMPERATURE=0.7
+
+# LinkedIn Configuration (for publishing)
+LINKEDIN_CLIENT_ID=your_linkedin_client_id
+LINKEDIN_CLIENT_SECRET=your_linkedin_client_secret
+LINKEDIN_REDIRECT_URI=http://localhost:8000/callback
 ```
 
-### Step 5: Set Up Profile
+### Step 5: Set Up Profile (Optional)
 
-Edit `database/profile.json` with your information:
+Edit `database/profile.json` with your information for personalized content:
 
 ```json
 {
@@ -270,160 +304,223 @@ Edit `database/profile.json` with your information:
 ### Run CLI Application
 
 ```bash
-python -m workflows.cli_workflow
+python app.py
 ```
 
-### Run Web API
+This will launch the interactive CLI runner that:
+1. Displays a welcome message
+2. Prompts you to enter a LinkedIn topic
+3. Runs the LangGraph workflow (Context Builder → Research → Planner → Writer → Reviewer)
+4. Displays the generated post with metrics
+5. Offers options to regenerate, edit, attach image, save draft, publish to LinkedIn, schedule publish, or exit
+
+### Attach Images
+
+1. Generate a post
+2. Select "4. Attach Image" from the menu
+3. Enter the path to your image (PNG, JPG, JPEG, WEBP)
+4. The image will be validated and attached to the draft
+5. Publish or schedule with the attached image
+
+### Schedule Posts
+
+1. Generate a post
+2. Select "6. Schedule Publish" from the menu
+3. Choose scheduling option (minutes, hours, or specific time)
+4. The post will be scheduled and persisted
+5. Run the scheduler runner to execute scheduled jobs
+
+### Run Scheduler Runner
 
 ```bash
-uvicorn app:app --reload
+python scheduler/runner_cli.py
 ```
 
-The API will be available at `http://localhost:8000`
+The scheduler runner will:
+1. Display current scheduler statistics
+2. Prompt for check interval (default 60 seconds)
+3. Periodically check for due jobs
+4. Execute jobs by calling LinkedIn Service
+5. Handle failures with retry logic
 
-Health check: `GET /`
+### Save Drafts
 
-### Example Prompts
+Drafts are automatically saved to `output/drafts/` as JSON files with timestamps when you choose the "Save Draft" option.
 
-**Professional Post:**
+### Edit Drafts
+
+You can manually edit the generated draft before publishing or saving:
+- Select "2. Edit Draft" from the menu
+- Edit the title, content, and hashtags
+- Press Enter to keep the current value for any field
+- The edited version becomes the current draft
+
+### Regenerate Posts
+
+Select "1. Regenerate Post" to generate a new version using the same topic. The system will automatically retry up to 2 times if the review score is below the threshold.
+
+### Publish to LinkedIn
+
+Select "5. Publish to LinkedIn" to publish the current draft. Only approved posts can be published. If an image is attached, it will be published with the post.
+
+### Example Usage Flow
+
 ```
-Create a LinkedIn post about the future of AI Agents in software development
+╔════════════════════════════════════════════════════════════╗
+║          AI LinkedIn Content Agent - CLI Runner            ║
+╚════════════════════════════════════════════════════════════╝
+
+Enter your LinkedIn topic: AI Agents in 2026
+
+Generating content for: AI Agents in 2026
+
+═══ Generated LinkedIn Post ═══
+
+Title: The Rise of AI Agents in 2026
+Content: AI agents are transforming how we build software...
+Hashtags: #AIAgents #AI #Technology
+Image: None (text-only post)
+
+═══ Metrics ═══
+Approval Status: ✅ Approved
+Iterations: 1
+Review Score: 9/10
+
+═══ Options ═══
+1. Regenerate Post
+2. Edit Draft
+3. Save Draft
+4. Attach Image
+5. Publish to LinkedIn
+6. Schedule Publish
+7. Exit
 ```
-
-**Casual Post:**
-```
-Write a fun post about my experience learning Python
-```
-
-**Technical Post:**
-```
-Explain the benefits of using LangChain for building AI applications
-```
-
-**Personal Story:**
-```
-Share my journey from traditional web development to AI engineering
-```
-
-### Workflow
-
-1. **Enter your topic** - Describe what you want to post about
-2. **Planning** - Agent analyzes intent and creates execution plan
-3. **Research** (if needed) - Web search for current information
-4. **Writing** - Content generation with personalization
-5. **Review** - Automated scoring and improvement
-6. **Image Generation** - AI-generated illustration
-7. **Preview** - Review content and image
-8. **Choose Action** - Publish, regenerate, edit, or cancel
-
-### Regeneration
-
-If you want to regenerate the content:
-- Select `[R] Regenerate` at the preview
-- The system will regenerate with context preservation
-- You can regenerate up to 5 times
-
-### Edit Workflow
-
-If you want to provide feedback:
-- Select `[E] Edit` at the preview
-- Enter your feedback (e.g., "Make it more engaging", "Add more technical details")
-- The system will regenerate with your feedback incorporated
 
 ---
 
-## Screenshots
+## Testing
 
-### Welcome Screen
-*[Screenshot of welcome screen with example prompt]*
+### Run All Tests
 
-### Planning Phase
-*[Screenshot of execution plan display]*
+```bash
+pytest
+```
 
-### Content Generation
-*[Screenshot of writing phase with spinner]*
+### Run Specific Test File
 
-### Review Scores
-*[Screenshot of review scores table]*
+```bash
+pytest tests/test_workflow.py
+pytest tests/test_memory.py
+pytest tests/test_scheduler.py
+pytest tests/test_cli.py
+pytest tests/test_utils.py
+```
 
-### Preview with Image
-*[Screenshot of final preview with post and image]*
+### Run Tests with Coverage
+
+```bash
+pytest --cov=. --cov-report=html
+```
+
+### Test Coverage
+
+The test suite covers:
+- Workflow execution and LangGraph orchestration
+- Memory indexing and retrieval
+- Scheduler job lifecycle
+- CLI functionality and image validation
+- Utility functions
 
 ---
 
-## Roadmap
+## Troubleshooting
 
-### Completed (v1.0)
+### Common Issues
 
-- ✅ Multi-agent architecture
-- ✅ Planning and intent detection
-- ✅ Web search integration
-- ✅ Content generation with personalization
-- ✅ Automated review and improvement
-- ✅ Image prompt generation
-- ✅ AI image generation
-- ✅ Multiple writing styles
-- ✅ User profile system
-- ✅ Regeneration workflow
-- ✅ Edit workflow
-- ✅ Rich terminal UI
-- ✅ Configuration system
+**Import Errors:**
+```bash
+# Ensure virtual environment is activated
+.venv\Scripts\activate  # Windows
+source .venv/bin/activate  # Linux/Mac
 
-### Planned (v2.0)
+# Reinstall dependencies
+pip install -r requirements.txt
+```
 
-- 🔄 LinkedIn API integration for direct publishing
-- 🔄 RAG (Retrieval-Augmented Generation) for content research
-- 🔄 LangGraph workflow orchestration
-- 🔄 Content scheduling
-- 🔄 Analytics and engagement tracking
-- 🔄 A/B testing for content variants
-- 🔄 Hashtag optimization
-- 🔄 Multi-language support
-- 🔄 Enhanced web interface
-- 🔄 Content history and versioning
-- 🔄 Template library
-- 🔄 Export to multiple formats (PDF, HTML)
-- 🔄 Email notifications
-- 🔄 OAuth authentication flow
+**API Key Errors:**
+- Verify GEMINI_API_KEY is set in `.env`
+- Check that the API key is valid at [Google AI Studio](https://makersuite.google.com/app/apikey)
+
+**LinkedIn Authentication Errors:**
+- Verify LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET are set
+- Check that the redirect URI matches your LinkedIn app settings
+- Ensure you complete the OAuth flow when prompted
+
+**Memory/Scheduler Persistence Issues:**
+- Check that the application has write permissions
+- Verify that `memory/` and `scheduler/` directories exist
+- Check logs for specific error messages
+
+**Image Validation Errors:**
+- Ensure the image file exists at the specified path
+- Verify the image format is supported (PNG, JPG, JPEG, WEBP)
+- Check that the path is not a directory
+
+---
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| GEMINI_API_KEY | Google Gemini API key | Yes | - |
+| MODEL_NAME | Gemini model name | No | gemini-3.5-flash |
+| TEMPERATURE | LLM temperature | No | 0.7 |
+| LINKEDIN_CLIENT_ID | LinkedIn OAuth client ID | No* | - |
+| LINKEDIN_CLIENT_SECRET | LinkedIn OAuth client secret | No* | - |
+| LINKEDIN_REDIRECT_URI | LinkedIn OAuth redirect URI | No* | http://localhost:8000/callback |
+
+*Required only for LinkedIn publishing
+
+### Writing Styles
+
+The system supports multiple writing styles:
+- Professional formal tone
+- Storytelling narrative style
+- Technical deep dive
+- Educational beginner-friendly
+- Founder/entrepreneur voice
+- Career journey narrative
+- Opinion piece
+- Product launch
+- Hiring/recruiting
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
-
-### Development Setup
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Run tests and ensure code quality
-5. Commit your changes (`git commit -m 'Add amazing feature'`)
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
+Contributions are welcome! Please ensure:
+- Code follows existing style
+- Tests are added for new features
+- Documentation is updated
+- No breaking changes to existing functionality
 
 ---
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License.
 
 ---
 
 ## Acknowledgments
 
 - [LangChain](https://github.com/langchain-ai/langchain) - Framework for building LLM applications
+- [LangGraph](https://github.com/langchain-ai/langgraph) - Graph-based workflow orchestration
 - [Google Gemini](https://ai.google.dev/) - LLM provider
 - [Rich](https://rich.readthedocs.io/) - Terminal UI library
-- [Pollinations.ai](https://pollinations.ai/) - AI image generation
 - [DuckDuckGo](https://duckduckgo.com/) - Web search API
-
----
-
-## Contact
-
-- **Author:** [Your Name]
-- **Project Link:** [https://github.com/think11723/LINKEDIN-AGENT](https://github.com/think11723/LINKEDIN-AGENT)
 
 ---
 

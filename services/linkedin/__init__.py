@@ -1,7 +1,8 @@
-"""LinkedIn publishing service module.
+"""LinkedIn module for LinkedIn Content Agent."""
 
-This module will contain the LinkedIn publishing functionality once migrated
-from the standalone prototype. Currently a placeholder.
-"""
+from services.linkedin.service import LinkedInService
+from services.linkedin.auth import LinkedInAuth
+from services.linkedin.publisher import LinkedInPublisher
+from services.linkedin.token_storage import TokenStorage
 
-__all__ = []
+__all__ = ["LinkedInService", "LinkedInAuth", "LinkedInPublisher", "TokenStorage"]
