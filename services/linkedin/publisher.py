@@ -10,14 +10,47 @@ from requests_oauthlib import OAuth2Session
 from utils.logger import logger
 
 
+class ApprovalRequiredError(Exception):
+    """Exception raised when attempting to publish without approval."""
+    pass
+
+
 class LinkedInPublisher:
     """Handles publishing content to LinkedIn."""
 
     API_BASE_URL = "https://api.linkedin.com/v2"
 
-    def __init__(self, session: OAuth2Session, person_urn: Optional[str] = None):
+    def __init__(self, session: OAuth2Session, person_urn: Optional[str] = None, require_approval: bool = True):
         self.session = session
         self.person_urn = person_urn
+        self.require_approval = require_approval
+
+    def _verify_approval(self, approval_status: Optional[str] = None, approval_token: Optional[str] = None) -> None:
+        """Verify that the post has been approved before publishing.
+        
+        Args:
+            approval_status: The approval status (must be "APPROVED")
+            approval_token: The approval token (must exist)
+            
+        Raises:
+            ApprovalRequiredError: If approval is required but not granted
+        """
+        if not self.require_approval:
+            return
+            
+        if approval_status != "APPROVED":
+            raise ApprovalRequiredError(
+                f"Cannot publish: Post not approved. Current status: {approval_status or 'None'}. "
+                "Please approve the draft via the approval email before publishing."
+            )
+        
+        if not approval_token:
+            raise ApprovalRequiredError(
+                "Cannot publish: No approval token found. "
+                "Please approve the draft via the approval email before publishing."
+            )
+        
+        logger.info(f"Approval verified: status={approval_status}, token={approval_token[:8]}...")
 
     def get_profile_urn(self) -> str:
         """
@@ -32,20 +65,26 @@ class LinkedInPublisher:
             "The OpenID 'sub' field is not a valid LinkedIn member URN for publishing."
         )
 
-    def publish_text_post(self, text: str) -> Dict:
+    def publish_text_post(self, text: str, approval_status: Optional[str] = None, approval_token: Optional[str] = None) -> Dict:
         """
         Publish a text-only post to LinkedIn.
         
         Args:
             text: The text content of the post
+            approval_status: The approval status (must be "APPROVED" if require_approval=True)
+            approval_token: The approval token (must exist if require_approval=True)
             
         Returns:
             Response data from LinkedIn API
             
         Raises:
             ValueError: If person_urn is not set
+            ApprovalRequiredError: If approval is required but not granted
             Exception: If API request fails
         """
+        # Verify approval before publishing
+        self._verify_approval(approval_status, approval_token)
+        
         if not self.person_urn:
             raise ValueError(
                 "person_urn is required. Use auth.get_member_urn() to retrieve it before publishing."
@@ -208,20 +247,26 @@ class LinkedInPublisher:
             logger.error(f"Request Payload: {register_payload}")
             raise Exception(f"Failed to upload image: {str(e)}")
 
-    def publish_image_post(self, text: str, image_path: str) -> Dict:
+    def publish_image_post(self, text: str, image_path: str, approval_status: Optional[str] = None, approval_token: Optional[str] = None) -> Dict:
         """
         Publish an image post to LinkedIn.
         
         Args:
             text: The text content of the post
             image_path: Local path to the image file
+            approval_status: The approval status (must be "APPROVED" if require_approval=True)
+            approval_token: The approval token (must exist if require_approval=True)
             
         Returns:
             Response data from LinkedIn API
             
         Raises:
+            ApprovalRequiredError: If approval is required but not granted
             Exception: If upload or publishing fails
         """
+        # Verify approval before publishing
+        self._verify_approval(approval_status, approval_token)
+        
         asset_urn = self.upload_image(image_path)
 
         share_url = f"{self.API_BASE_URL}/ugcPosts"

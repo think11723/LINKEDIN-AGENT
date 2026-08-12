@@ -5,6 +5,7 @@ It returns clean, structured search results with error handling.
 """
 
 from typing import List, Dict, Any
+import time
 from duckduckgo_search import DDGS
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -13,49 +14,68 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 console = Console()
 
 
-def search_web(query: str, max_results: int = 5) -> List[Dict[str, str]]:
-    """Perform a web search using DuckDuckGo.
+def search_web(query: str, max_results: int = 5, max_retries: int = 3) -> List[Dict[str, str]]:
+    """Perform a web search using DuckDuckGo with retry logic.
     
     Args:
         query: Search query string.
         max_results: Maximum number of results to return (default: 5).
+        max_retries: Maximum number of retry attempts for rate limits (default: 3).
         
     Returns:
         List of dictionaries containing 'title', 'url', and 'snippet'.
         Returns empty list if search fails or no results found.
     """
-    try:
-        with Progress(
-            SpinnerColumn("dots"),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-            transient=True,
-            refresh_per_second=10
-        ) as progress:
-            task = progress.add_task("[cyan]Searching the web...[/cyan]", total=None)
+    last_error = None
+    
+    for attempt in range(max_retries):
+        try:
+            with Progress(
+                SpinnerColumn("dots"),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+                transient=True,
+                refresh_per_second=10
+            ) as progress:
+                task = progress.add_task("[cyan]Searching the web...[/cyan]", total=None)
+                
+                # Perform search
+                ddgs = DDGS()
+                results = list(ddgs.text(query, max_results=max_results * 2))  # Get more for filtering
             
-            # Perform search
-            ddgs = DDGS()
-            results = list(ddgs.text(query, max_results=max_results * 2))  # Get more for filtering
-        
-        # Clean and filter results
-        cleaned_results = _clean_results(results)
-        
-        # Limit to max_results
-        final_results = cleaned_results[:max_results]
-        
-        if final_results:
-            console.print(f"[green]✓[/green] [dim]Found[/dim] [bold]{len(final_results)}[/bold] [dim]relevant results[/dim]")
-        else:
-            console.print("[yellow]⚠[/yellow] [dim]No results found[/dim]")
-        
-        console.print("")
-        return final_results
-        
-    except Exception as e:
-        console.print(f"[red]✗[/red] [dim]Search failed:[/dim] [bold]{str(e)}[/bold]")
-        console.print("")
-        return []
+            # Clean and filter results
+            cleaned_results = _clean_results(results)
+            
+            # Limit to max_results
+            final_results = cleaned_results[:max_results]
+            
+            if final_results:
+                console.print(f"[green]✓[/green] [dim]Found[/dim] [bold]{len(final_results)}[/bold] [dim]relevant results[/dim]")
+            else:
+                console.print("[yellow]⚠[/yellow] [dim]No results found[/dim]")
+            
+            console.print("")
+            return final_results
+            
+        except Exception as e:
+            last_error = str(e)
+            # Check if it's a rate limit error (HTTP 202)
+            if "202" in last_error or "ratelimit" in last_error.lower():
+                if attempt < max_retries - 1:
+                    # Exponential backoff: 2^attempt seconds
+                    backoff_time = 2 ** attempt
+                    console.print(f"[yellow]⚠[/yellow] [dim]Rate limited. Retrying in {backoff_time}s... (Attempt {attempt + 1}/{max_retries})[/dim]")
+                    time.sleep(backoff_time)
+                    continue
+                else:
+                    console.print(f"[red]✗[/red] [dim]Search failed after {max_retries} retries due to rate limiting[/dim]")
+            else:
+                # Non-rate-limit error, don't retry
+                console.print(f"[red]✗[/red] [dim]Search failed:[/dim] [bold]{str(e)}[/bold]")
+                break
+    
+    console.print("")
+    return []
 
 
 def _clean_results(results: List[Dict[str, Any]]) -> List[Dict[str, str]]:

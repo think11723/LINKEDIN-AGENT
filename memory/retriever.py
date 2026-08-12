@@ -49,7 +49,8 @@ class Retriever:
             path = Path(self.post_store_path)
             path.parent.mkdir(parents=True, exist_ok=True)
             
-            data = {post_id: post.dict() for post_id, post in self.posts.items()}
+            # Use model_dump() for Pydantic v2 compatibility
+            data = {post_id: post.model_dump() for post_id, post in self.posts.items()}
             with open(path, 'w') as f:
                 json.dump(data, f)
             logger.info(f"Saved {len(self.posts)} posts to disk")

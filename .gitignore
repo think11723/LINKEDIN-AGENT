@@ -95,3 +95,15 @@ dmypy.json
 
 # profiling
 *.prof
+
+# Local authentication/runtime state
+.tokens/
+approval/approval_data.json
+approval/audit_log.json
+
+# Environment/secrets
+.env
+.env.*
+!.env.example
+firebase-service-account.json
+firebase-service-account.*.json

@@ -114,7 +114,7 @@ class LinkedInService:
         # Initialize publisher
         self.publisher = LinkedInPublisher(session, self.person_urn)
     
-    def publish_post(self, title: str, content: str, hashtags: list, image_path: Optional[str] = None) -> Dict:
+    def publish_post(self, title: str, content: str, hashtags: list, image_path: Optional[str] = None, approval_status: Optional[str] = None, approval_token: Optional[str] = None) -> Dict:
         """Publish a post to LinkedIn.
         
         Args:
@@ -122,6 +122,8 @@ class LinkedInService:
             content: Post content.
             hashtags: List of hashtags.
             image_path: Optional path to image file.
+            approval_status: The approval status (must be "APPROVED" if require_approval=True)
+            approval_token: The approval token (must exist if require_approval=True)
             
         Returns:
             Response from LinkedIn API.
@@ -147,10 +149,10 @@ class LinkedInService:
             # Publish with or without image
             if image_path:
                 logger.info(f"Publishing with image: {image_path}")
-                result = self.publisher.publish_image_post(post_text, image_path)
+                result = self.publisher.publish_image_post(post_text, image_path, approval_status, approval_token)
             else:
                 logger.info("Publishing text-only post")
-                result = self.publisher.publish_text_post(post_text)
+                result = self.publisher.publish_text_post(post_text, approval_status, approval_token)
             
             logger.info("Publishing completed")
             

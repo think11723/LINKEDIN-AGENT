@@ -171,6 +171,39 @@ def publish_draft(result):
         console.print("[yellow]Cannot publish: Post is not approved by reviewer[/yellow]")
         return False
     
+    # Check if approval request was created and email sent
+    draft_id = result.metadata.get("draft_id") if result.metadata else None
+    if not draft_id:
+        console.print("[yellow]Cannot publish: No approval request was created[/yellow]")
+        console.print("[dim]Please regenerate the post to create an approval request.[/dim]")
+        return False
+    
+    # Check approval status from approval service
+    from approval.service import ApprovalService
+    from approval.store import ApprovalStore
+    
+    approval_service = ApprovalService()
+    approval_store = ApprovalStore()
+    
+    # Get the draft to check approval status
+    draft = approval_store.get_draft(draft_id)
+    if not draft:
+        console.print("[yellow]Cannot publish: Draft not found in approval system[/yellow]")
+        return False
+    
+    # Check if draft has been approved
+    approval_token = approval_store.get_token_by_draft_id(draft_id)
+    if not approval_token:
+        console.print("[yellow]Cannot publish: No approval token found[/yellow]")
+        console.print("[dim]Please approve the draft via the approval email before publishing.[/dim]")
+        return False
+    
+    if not approval_token.is_approved():
+        console.print("[yellow]Cannot publish: Post is not approved[/yellow]")
+        console.print(f"[dim]Current status: {approval_token.status.value if approval_token.status else 'Unknown'}[/dim]")
+        console.print("[dim]Please approve the draft via the approval email before publishing.[/dim]")
+        return False
+    
     console.print("\n[bold cyan]═══ Publish to LinkedIn ═══[/bold cyan]")
     
     # Check for image
@@ -195,7 +228,9 @@ def publish_draft(result):
             result.final_post.title,
             result.final_post.content,
             result.final_post.hashtags,
-            image_path
+            image_path,
+            approval_status=approval_token.status.value,
+            approval_token=approval_token.token
         )
         if "error" in publish_result:
             console.print(f"[red]Publishing failed: {publish_result['error']}[/red]")

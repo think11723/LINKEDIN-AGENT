@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Approval Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #0077b5 0%, #00a8e8 100%);
+            color: white;
+            padding: 30px 40px;
+        }
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+        .header .meta {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 40px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 30px;
+        }
+        .main-content {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 25px;
+        }
+        .sidebar {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 25px;
+        }
+        .section {
+            margin-bottom: 25px;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #0077b5;
+        }
+        .section h2 {
+            color: #0077b5;
+            font-size: 18px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .score-badge {
+            display: inline-block;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 32px;
+            font-weight: bold;
+            color: white;
+            text-align: center;
+        }
+        .score-high { background: #28a745; }
+        .score-medium { background: #ffc107; }
+        .score-low { background: #dc3545; }
+        .post-content {
+            white-space: pre-wrap;
+            padding: 20px;
+            background: #f5f5f5;
+            border-radius: 6px;
+            font-size: 15px;
+            line-height: 1.8;
+            border: 1px solid #e0e0e0;
+        }
+        .hashtags {
+            color: #0077b5;
+            font-weight: 500;
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        .info-label {
+            color: #666;
+            font-weight: 500;
+        }
+        .info-value {
+            color: #333;
+            font-weight: 600;
+        }
+        .version-badge {
+            background: #6c757d;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        .image-preview {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+        .actions {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin-top: 30px;
+        }
+        .btn {
+            flex: 1;
+            min-width: 150px;
+            padding: 15px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .btn-approve {
+            background: #28a745;
+            color: white;
+        }
+        .btn-reject {
+            background: #dc3545;
+            color: white;
+        }
+        .btn-edit {
+            background: #17a2b8;
+            color: white;
+        }
+        .btn-schedule {
+            background: #6c757d;
+            color: white;
+        }
+        .btn-back {
+            background: #e9ecef;
+            color: #333;
+        }
+        .feedback-box {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 10px;
+        }
+        .research-box {
+            background: #d1ecf1;
+            border: 1px solid #17a2b8;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 10px;
+        }
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+            .content {
+                padding: 20px;
+            }
+            .actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📄 Draft Approval Dashboard</h1>
+            <div class="meta">
+                Topic: {{ draft.topic }} | Version {{ draft.current_version }} | Generated: {{ draft.created_at.strftime('%Y-%m-%d %H:%M') }}
+            </div>
+        </div>
+        
+        <div class="content">
+            <div class="grid">
+                <div class="main-content">
+                    <div class="section">
+                        <h2>📝 Post Title</h2>
+                        <p style="font-size: 20px; font-weight: 600;">{{ draft.title }}</p>
+                    </div>
+                    
+                    <div class="section">
+                        <h2>📄 Post Content</h2>
+                        <div class="post-content">{{ draft.content }}</div>
+                    </div>
+                    
+                    <div class="section">
+                        <h2>🏷️ Hashtags</h2>
+                        <p class="hashtags">{{ draft.hashtags | join(', ') }}</p>
+                    </div>
+                    
+                    {% if draft.image_path %}
+                    <div class="section">
+                        <h2>🖼️ Image Preview</h2>
+                        <img src="{{ draft.image_path }}" class="image-preview" alt="Generated image">
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <div class="sidebar">
+                    <div class="section" style="text-align: center;">
+                        <h2>⭐ Review Score</h2>
+                        <div class="score-badge {% if draft.review_score >= 8 %}score-high{% elif draft.review_score >= 6 %}score-medium{% else %}score-low{% endif %}">
+                            {{ draft.review_score }}/10
+                        </div>
+                    </div>
+                    
+                    <div class="section">
+                        <h2>💬 Reviewer Feedback</h2>
+                        <div class="feedback-box">
+                            {{ draft.review_feedback }}
+                        </div>
+                    </div>
+                    
+                    {% if draft.research_summary %}
+                    <div class="section">
+                        <h2>🔍 Research Summary</h2>
+                        <div class="research-box">
+                            {{ draft.research_summary }}
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="section">
+                        <h2>📊 Draft Information</h2>
+                        <div class="info-row">
+                            <span class="info-label">Draft ID:</span>
+                            <span class="info-value">{{ draft.draft_id[:8] }}...</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Version:</span>
+                            <span class="info-value">{{ draft.current_version }}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Created:</span>
+                            <span class="info-value">{{ draft.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                        </div>
+                        {% if draft.published_at %}
+                        <div class="info-row">
+                            <span class="info-label">Published:</span>
+                            <span class="info-value">{{ draft.published_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                        </div>
+                        {% endif %}
+                        {% if draft.linkedin_post_id %}
+                        <div class="info-row">
+                            <span class="info-label">LinkedIn ID:</span>
+                            <span class="info-value">{{ draft.linkedin_post_id }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    {% if draft.versions %}
+                    <div class="section">
+                        <h2>📜 Version History</h2>
+                        {% for version in draft.versions %}
+                        <div class="info-row">
+                            <span class="info-label">v{{ version.version_number }}</span>
+                            <span class="info-value">{{ version.edited_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="actions">
+                <a href="/approve/{{ token }}" class="btn btn-approve">✅ Approve Now</a>
+                <a href="/reject/{{ token }}" class="btn btn-reject">❌ Reject</a>
+                <a href="/edit/{{ token }}" class="btn btn-edit">✏️ Edit Draft</a>
+                <a href="/schedule/{{ token }}" class="btn btn-schedule">📅 Schedule Publish</a>
+                <a href="/drafts" class="btn btn-back">← Back to Drafts</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

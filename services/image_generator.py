@@ -10,8 +10,12 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 import requests
 import urllib.parse
-from agents.image_prompt import ImagePrompt
 from config.config import config
+
+# Import ImagePrompt locally to avoid circular import
+def _get_image_prompt_model():
+    from agents.image_prompt import ImagePrompt
+    return ImagePrompt
 
 
 console = Console()

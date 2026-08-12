@@ -1,13 +1,10 @@
 """Workflow state and result models for LinkedIn Content Agent."""
 
-from typing import Optional, List, Dict, Any, TYPE_CHECKING
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 from models.models import LinkedInPost
 from agents.planner import ExecutionPlan
-from agents.reviewer import ReviewScores
-
-if TYPE_CHECKING:
-    from agents.reviewer import ReviewResult
+from agents.reviewer import ReviewScores, ReviewResult
 
 
 class WorkflowState(BaseModel):
@@ -17,7 +14,7 @@ class WorkflowState(BaseModel):
     research: Optional[List[Dict[str, str]]] = Field(default=None, description="Research results if search was performed")
     execution_plan: Optional[ExecutionPlan] = Field(default=None, description="Execution plan from Planner Agent")
     draft: Optional[LinkedInPost] = Field(default=None, description="Current draft from Writer Agent")
-    review: Optional["ReviewResult"] = Field(default=None, description="Review result from Reviewer Agent")
+    review: Optional[ReviewResult] = Field(default=None, description="Review result from Reviewer Agent")
     approved: bool = Field(default=False, description="Whether content was approved")
     iteration: int = Field(default=0, description="Current iteration count")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")

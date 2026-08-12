@@ -12,7 +12,7 @@ from models.models import LinkedInPost
 from models.context_models import Context
 from config.config import config
 from utils.parsers import create_linkedin_post
-from services.llm import generate_text
+from services.llm import LLMFactory
 
 
 console = Console()
@@ -71,6 +71,7 @@ class ReviewerAgent:
     
     def __init__(self) -> None:
         """Initialize the Reviewer Agent."""
+        self.llm = LLMFactory.get("reviewer")
         self._setup_prompts()
     
     def _setup_prompts(self) -> None:
@@ -210,13 +211,9 @@ HASHTAGS: [improved hashtags]"""
             hashtags=", ".join(post.hashtags)
         )
         
-        response = generate_text(
-            system_prompt="You are an expert LinkedIn content editor.",
-            user_prompt=prompt,
-            temperature=0.3
-        )
+        response = self.llm.generate_text(prompt, temperature=0.3)
         
-        return self._parse_review_response(response)
+        return self._parse_review_response(response.text)
     
     def _parse_review_response(self, response: str) -> tuple[ReviewScores, str, Optional[ReviewDecision]]:
         """Parse the review response from LLM.
@@ -358,13 +355,9 @@ HASHTAGS: [improved hashtags]"""
             hashtags=", ".join(post.hashtags)
         )
         
-        response = generate_text(
-            system_prompt="You are an expert LinkedIn content editor.",
-            user_prompt=prompt,
-            temperature=0.3
-        )
+        response = self.llm.generate_text(prompt, temperature=0.3)
         
-        return self._parse_improve_response(response, post)
+        return self._parse_improve_response(response.text, post)
     
     def _parse_improve_response(self, response: str, original_post: LinkedInPost) -> LinkedInPost:
         """Parse the improved post response from LLM.

@@ -10,7 +10,7 @@ from rich.console import Console
 from rich.panel import Panel
 from models.models import LinkedInPost
 from config.config import config
-from services.llm import generate_text
+from services.llm import LLMFactory
 import re
 
 
@@ -31,31 +31,89 @@ class ImagePromptAgent:
     
     def __init__(self) -> None:
         """Initialize the Image Prompt Agent."""
+        self.llm = LLMFactory.get("writer")  # Use writer model for image prompts
         self._setup_prompt()
     
     def _setup_prompt(self) -> None:
         """Set up the system prompt for image prompt generation."""
-        self.system_prompt = """You are an expert at creating image prompts for AI image generation models.
-Your goal is to generate ONE professional, detailed image prompt that supports a LinkedIn post.
+        self.system_prompt = """You are an expert at creating detailed, professional image prompts for AI image generation models.
+Your goal is generate ONE comprehensive image prompt that supports a LinkedIn post.
 
-IMPORTANT RULES:
+CRITICAL REQUIREMENTS:
 - NEVER include text, logos, watermarks, or UI elements in the image
 - Prefer illustrations over photorealistic images unless the topic specifically needs realism
 - The image should be clean, modern, and suitable for LinkedIn
 - Focus on visual storytelling that complements the post content
 
+PROMPT STRUCTURE:
+Every prompt MUST include these sections:
+
+1. Style Description
+   - Professional illustration style
+   - Color palette (specific colors)
+   - Visual aesthetic
+
+2. Topic Visualization
+   - How to visually represent the main concept
+   - Specific elements to include
+   - Composition layout
+
+3. Technical Details
+   - Perspective (flat 2D, isometric, etc.)
+   - Lighting (soft, dramatic, even)
+   - Background (clean white, gradient, etc.)
+
+4. Constraints
+   - No text
+   - No logos
+   - No watermark
+   - Suitable for LinkedIn
+   - 16:9 aspect ratio
+   - High resolution
+
 STYLE SELECTION:
 Based on the topic, automatically choose an appropriate style:
-- Technology/AI: futuristic abstract technology, digital illustration
-- Education/Learning: modern flat illustration, clean educational style
-- Career/Professional: clean professional workspace, minimalist business style
-- Programming/Development: isometric software development illustration
+- Technology/AI: futuristic abstract technology, digital illustration, blue/teal color palette
+- Education/Learning: modern flat illustration, clean educational style, warm colors
+- Career/Professional: clean professional workspace, minimalist business style, neutral colors
+- Programming/Development: isometric software development illustration, code-themed colors
 - General: clean modern illustration with professional color palette
 
 OUTPUT FORMAT:
 Return your response in this format:
 STYLE: [selected style]
-PROMPT: [detailed image prompt]"""
+PROMPT: [detailed image prompt with all required sections]
+
+EXAMPLE PROMPT:
+Modern flat vector illustration.
+
+Topic: Four Pillars of Object Oriented Programming in Python.
+
+Visualize:
+- Encapsulation as a locked box with secure padlock
+- Inheritance as a family tree showing parent-child relationships
+- Polymorphism as different tools performing the same task
+- Abstraction as a simplified dashboard hiding complexity
+
+Style: Professional, minimal, technology themed.
+
+Colors: Blue and white color palette with clean gradients.
+
+Composition: Centered layout with four distinct quadrants.
+
+Perspective: Flat 2D illustration.
+
+Lighting: Soft, even lighting.
+
+Background: Clean white background.
+
+No text, no logos, no watermark.
+
+Suitable for LinkedIn.
+
+16:9 aspect ratio.
+
+High resolution."""
     
     def generate(self, post: LinkedInPost) -> ImagePrompt:
         """Generate an image prompt based on the LinkedIn post.
@@ -126,22 +184,24 @@ PROMPT: [detailed image prompt]"""
         Returns:
             Detailed image prompt string.
         """
-        user_prompt = f"""Generate a detailed image prompt for a LinkedIn post.
+        user_prompt = f"""Generate a detailed, professional image prompt for a LinkedIn post.
 
 Post Title: {post.title}
-Post Content: {post.content[:200]}...
+Post Content: {post.content[:300]}...
 Selected Style: {style}
 
-Create a professional, engaging image prompt that visually represents this topic.
-The prompt should be detailed but concise (2-3 sentences)."""
+Create a comprehensive image prompt following the structure provided in the system prompt.
+The prompt must include:
+1. Style description with specific color palette
+2. Topic visualization with specific elements
+3. Technical details (perspective, lighting, background)
+4. Constraints (no text, no logos, 16:9 aspect ratio, high resolution)
+
+Make the prompt detailed and specific for high-quality image generation."""
         
-        response = generate_text(
-            system_prompt=self.system_prompt,
-            user_prompt=user_prompt,
-            temperature=0.5
-        )
+        response = self.llm.generate_text(user_prompt, temperature=0.5)
         
-        return self._parse_response(response, style)
+        return self._parse_response(response.text, style)
     
     def _parse_response(self, response: str, fallback_style: str) -> str:
         """Parse the LLM response to extract the prompt.

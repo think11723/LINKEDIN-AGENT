@@ -1,19 +1,19 @@
 """Embedding utilities for LinkedIn Content Memory.
 
-This module provides simple embedding generation for LinkedIn posts.
+This module provides embedding generation using dedicated embedding models.
 """
 
 from typing import List
-from services.llm import generate_text
+from services.llm.embeddings import EmbeddingFactory, EmbeddingResponse
 from utils.logger import logger
+from services.llm.config import LLMConfig
 
 
 def generate_embedding(text: str) -> List[float]:
-    """Generate a simple embedding for text.
+    """Generate an embedding for text using dedicated embedding model.
     
-    This is a lightweight implementation that uses the LLM to generate
-    a semantic representation. For production, consider using dedicated
-    embedding models like OpenAI's text-embedding-3-small.
+    This uses Hugging Face's sentence-transformers model for proper embeddings.
+    For production, consider using dedicated embedding services like OpenAI's text-embedding-3-small.
     
     Args:
         text: Text to embed.
@@ -22,30 +22,26 @@ def generate_embedding(text: str) -> List[float]:
         List of float values representing the embedding.
     """
     try:
-        # Use LLM to generate a semantic representation
-        prompt = f"""Generate a 32-dimensional vector representation of the following text.
-Return only 32 comma-separated float values between -1 and 1.
-
-Text: {text}
-
-Vector:"""
-        
-        response = generate_text(
-            system_prompt="You are a text embedding generator. Output only numeric vectors.",
-            user_prompt=prompt,
-            temperature=0.1
+        # Get embedding provider
+        provider = EmbeddingFactory.get(
+            provider="huggingface",
+            api_key=LLMConfig.HF_API_KEY,
+            model="sentence-transformers/all-MiniLM-L6-v2"
         )
         
-        # Parse the response into a list of floats
-        values = [float(x.strip()) for x in response.split(',') if x.strip()]
+        # Generate embedding
+        response = provider.generate_embedding(text)
         
-        # Ensure we have exactly 32 values
-        if len(values) < 32:
-            values.extend([0.0] * (32 - len(values)))
-        elif len(values) > 32:
-            values = values[:32]
+        # Normalize to 32 dimensions for consistency with existing implementation
+        embedding = response.embedding
         
-        return values
+        # Pad or truncate to 32 dimensions
+        if len(embedding) < 32:
+            embedding.extend([0.0] * (32 - len(embedding)))
+        elif len(embedding) > 32:
+            embedding = embedding[:32]
+        
+        return embedding
         
     except Exception as e:
         logger.error(f"Failed to generate embedding: {e}")
