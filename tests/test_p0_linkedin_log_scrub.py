@@ -66,7 +66,7 @@ def test_linkedin_callback_does_not_log_response_body_on_token_failure(monkeypat
                 "user_id": "USER_A",
                 "code_verifier": "v",
                 "created_at": datetime.now(timezone.utc),
-                "expires_at": datetime.now(timezone.utc),
+                "expires_at": datetime.now(timezone.utc).replace(year=2099),
                 "consumed": False,
             }
         )
@@ -91,11 +91,22 @@ def test_linkedin_callback_does_not_log_response_body_on_token_failure(monkeypat
 
     with TestClient(backend.app.main.app) as client:
         with caplog.at_level(logging.WARNING):
+            # Phase 8C: follow_redirects=False so we observe the callback's
+            # own 303 instead of chasing it to the SPA /settings route
+            # (which the backend doesn't serve) and misreading the 404.
             response = client.get(
                 "/api/v1/linkedin/callback",
                 params={"code": "fake", "state": "test-state-1234"},
+                follow_redirects=False,
             )
-    assert response.status_code in (400, 502)  # 400 invalid state, 502 exchange fail
+    # The state row is valid (consumed=False, expires_at in the future),
+    # so OAuthStateRepository.consume() succeeds. The HTTP token
+    # exchange then fails with the stubbed _FakeResponse (400), so the
+    # callback returns 303 -> ?linkedin=error&reason=token_exchange.
+    assert response.status_code == 303
+    location = response.headers["location"]
+    assert "linkedin=error" in location
+    assert "reason=token_exchange" in location
     # Most importantly, no sensitive fragment must appear in the captured log.
     assert not _has_sensitive(caplog), (
         "LinkedIn callback log path leaked a sensitive fragment. "

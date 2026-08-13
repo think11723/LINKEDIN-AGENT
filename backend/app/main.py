@@ -23,6 +23,11 @@ from backend.app.api.v1.settings import router as settings_router
 from backend.app.core import security as _security
 from backend.app.core.config import get_settings
 from backend.app.core.error_handlers import install_error_handlers
+from backend.app.core.logging import configure_json_logging
+from backend.app.core.request_id import (
+    RequestIdMiddleware,
+    install_request_id_log_filter,
+)
 from backend.app.core.security import init_firebase
 from backend.app.db import mongo as _mongo
 from backend.app.db.mongo import close_mongo, ensure_indexes, init_mongo
@@ -80,6 +85,15 @@ app = FastAPI(
 )
 
 settings = get_settings()
+# P3-1: install request-ID log filter and middleware. Middleware is added
+# before CORSMiddleware so the response header is stamped on every
+# response including those produced by the global error handlers.
+install_request_id_log_filter()
+# P3-2: install JSON logging on the root logger. Idempotent and
+# side-effect-free for any handler that is not the JSON handler — so
+# caplog and other test instrumentation remain intact.
+configure_json_logging()
+app.add_middleware(RequestIdMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins,

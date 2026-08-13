@@ -1,5 +1,7 @@
 """Tests for LLM providers with mocked HTTP responses."""
 
+import json
+
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 import requests
@@ -91,11 +93,19 @@ class TestHuggingFaceProvider:
     @patch('services.llm.providers.huggingface.requests.post')
     def test_generate_text_malformed_response(self, mock_post):
         """Test malformed JSON response handling."""
+        # The current HuggingFace provider
+        # (services/llm/providers/huggingface.py) catches
+        # ``json.JSONDecodeError`` from ``response.json()`` and wraps it as
+        # ``MalformedResponseError``. ``requests.Response.json()`` actually
+        # raises ``JSONDecodeError`` (a ``ValueError`` subclass), so the
+        # mock must raise the same type — a bare ``ValueError`` would
+        # propagate untouched and bypass the safety net the test is
+        # trying to verify.
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_response.json.side_effect = ValueError("Invalid JSON")
+        mock_response.json.side_effect = json.JSONDecodeError("Invalid JSON", "doc", 0)
         mock_post.return_value = mock_response
-        
+
         provider = HuggingFaceProvider(api_key="test_key", model="test_model")
         with pytest.raises(MalformedResponseError):
             provider.generate_text("Test prompt")

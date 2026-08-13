@@ -98,11 +98,23 @@ def _envelope(*, code: str, message: str, request_id: str, extra: dict[str, Any]
 
 
 def _request_id(request: Request) -> str:
-    """Return the request id from the response state, generating one if missing."""
+    """Return the request id for the current request scope.
+
+    Phase 8D / P3-1: prefer the ``ContextVar`` (single source of truth,
+    shared with ``logging`` filters); fall back to ``request.state`` for
+    any code path that constructs a Request without going through
+    :class:`RequestIdMiddleware`.
+    """
+    from backend.app.core.request_id import request_id_var
+
+    rid = request_id_var.get()
+    if rid:
+        return rid
     rid = getattr(request.state, "request_id", None)
-    if not rid:
-        rid = uuid.uuid4().hex
-        request.state.request_id = rid
+    if rid:
+        return rid
+    rid = uuid.uuid4().hex
+    request.state.request_id = rid
     return rid
 
 
