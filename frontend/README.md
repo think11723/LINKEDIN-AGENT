@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# LinkedIn AI Studio — Frontend
 
-## Getting Started
+React + Vite + JavaScript + Tailwind CSS frontend for the LinkedIn Content Agent backend.
 
-First, run the development server:
+## Scripts
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev      # start Vite dev server
+npm run build    # build for production
+npm run preview  # preview the production build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Environment
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Copy `.env.example` to `.env` and provide public Firebase Web SDK credentials plus the
+backend base URL. Never place backend secrets here — they will be exposed to the browser.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Variable                       | Purpose                                              |
+| ------------------------------ | ---------------------------------------------------- |
+| `VITE_API_BASE_URL`            | FastAPI backend (default `http://localhost:8000`).   |
+| `VITE_FIREBASE_API_KEY`        | Firebase Web SDK key.                                |
+| `VITE_FIREBASE_AUTH_DOMAIN`    | Firebase auth domain.                                |
+| `VITE_FIREBASE_PROJECT_ID`     | Firebase project id.                                 |
+| `VITE_FIREBASE_STORAGE_BUCKET` | Firebase storage bucket.                             |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Firebase messaging sender id.                   |
+| `VITE_FIREBASE_APP_ID`         | Firebase app id.                                     |
 
-## Learn More
+## Architecture
 
-To learn more about Next.js, take a look at the following resources:
+```
+src/
+  components/   # reusable UI primitives (Button, Card, Badge, Input, Feedback)
+  context/      # Auth, Toast, Drafts providers
+  layouts/      # AppShell with sidebar + topbar
+  pages/        # route components
+  services/     # Firebase init, API client (Firebase ID token attached)
+  utils/        # cn() helper, date helpers
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The API client attaches the Firebase ID token to every backend request as
+`Authorization: Bearer <token>` and exposes typed wrappers for each FastAPI route
+(`/api/v1/dashboard`, `/api/v1/content`, `/api/v1/approval`, `/api/v1/scheduler`,
+`/api/v1/activity`). The backend is not modified by this frontend.

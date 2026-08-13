@@ -318,6 +318,10 @@ class ContentGraphWorkflow:
                 logger.info(f"Iteration {iteration}: LinkedIn formatting validation passed")
             
             state["draft"] = draft
+            # Phase 8A / P0-5: record the provider+model that produced the draft.
+            info = self.writer.provider_info()
+            state["metadata"]["writer_provider"] = info["provider"]
+            state["metadata"]["writer_model"] = info["model"]
             logger.info(f"Iteration {iteration}: Writer completed")
         except Exception as e:
             logger.error(f"Writer failed: {e}")
@@ -342,10 +346,15 @@ class ContentGraphWorkflow:
         try:
             review = self.reviewer.review(state["draft"], state["context"])
             state["review"] = review
-            
+
+            # Phase 8A / P0-5: record the provider+model that produced the review.
+            info = self.reviewer.provider_info()
+            state["metadata"]["reviewer_provider"] = info["provider"]
+            state["metadata"]["reviewer_model"] = info["model"]
+
             # Debug logging: Print raw ReviewResult before any decisions
             logger.info(f"Iteration {iteration}: Raw ReviewResult - Score: {review.scores.overall}/10, Decision: {review.decision.decision if review.decision else 'N/A'}, Feedback: {review.feedback[:100] if review.feedback else 'N/A'}")
-            
+
             logger.info(f"Iteration {iteration}: Review completed with score {review.scores.overall}/10")
         except Exception as e:
             logger.error(f"Reviewer failed: {e}")

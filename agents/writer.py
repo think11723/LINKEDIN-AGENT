@@ -29,6 +29,16 @@ class WriterAgent:
         """Initialize the Writer Agent."""
         self.llm = LLMFactory.get("writer")
         self._setup_prompt()
+
+    def provider_info(self) -> dict[str, str]:
+        """Return ``{"provider": ..., "model": ...}`` for the last-resolved LLM."""
+        llm = getattr(self, "llm", None)
+        if llm is None:
+            return {"provider": "unknown", "model": "unknown"}
+        return {
+            "provider": getattr(llm, "provider_name", "unknown"),
+            "model": getattr(llm, "model", "unknown"),
+        }
     
     def _setup_prompt(self) -> None:
         """Set up the system prompt for LinkedIn content generation."""

@@ -1,0 +1,1 @@
+"""Backend core utilities: settings, security, database lifecycle."""

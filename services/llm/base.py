@@ -84,6 +84,20 @@ class BaseProvider(ABC):
         self.timeout = timeout
         self.max_retries = max_retries
     
+    @property
+    def provider_name(self) -> str:
+        """Stable lowercase identifier for the provider (``"groq"``, ``"openrouter"``, ...).
+
+        Used by the workflow layer to record which provider actually
+        served the request. Defaults to the class name lowercased.
+        """
+        name = type(self).__name__.lower()
+        for suffix in ("provider",):
+            if name.endswith(suffix):
+                name = name[: -len(suffix)]
+                break
+        return name
+
     def _validate_config(self, api_key: str, model: str):
         """Validate configuration during initialization.
         

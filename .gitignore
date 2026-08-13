@@ -1,23 +1,47 @@
-# Environment variables
-.env
-.env.local
-.env.*.local
+# ============================================================
+# Environment variables / secrets
+# ============================================================
 
-# Virtual environment
+.env
+.env.*
+!.env.example
+
+# Firebase service account
+firebase-service-account.json
+firebase-service-account.*.json
+
+# Local project secrets / tokens
+draft.env
+pub.env
+tokens.env
+tokens.json
+
+# Local authentication/runtime state
+.tokens/
+
+# ============================================================
+# Python virtual environments
+# ============================================================
+
 .venv/
 venv/
 ENV/
 env/
 
+# ============================================================
 # Python cache
+# ============================================================
+
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
 
-# Distribution / packaging
-.Python
+# ============================================================
+# Python distribution / packaging
+# ============================================================
+
 build/
 develop-eggs/
 dist/
@@ -37,11 +61,17 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+# ============================================================
 # PyInstaller
+# ============================================================
+
 *.manifest
 *.spec
 
-# Unit test / coverage reports
+# ============================================================
+# Testing / coverage
+# ============================================================
+
 htmlcov/
 .tox/
 .nox/
@@ -55,7 +85,10 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 
-# IDEs
+# ============================================================
+# IDEs / editors
+# ============================================================
+
 .vscode/
 .idea/
 *.swp
@@ -63,47 +96,72 @@ coverage.xml
 *~
 .DS_Store
 
+# ============================================================
 # Output files
+# ============================================================
+
 output/
 output/images/
 output/latest_post.md
 
-# Persistence directories
-memory/*.json
+# ============================================================
+# Persistence / local application data
+# ============================================================
+
+memory/*.json*
 memory/*.db
 scheduler/*.json
-
-# Temporary files
-test_gemini.py
-*.tmp
-*.log
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
-.pyre/
-
-# profiling
-*.prof
-
-# Local authentication/runtime state
-.tokens/
 approval/approval_data.json
 approval/audit_log.json
 
-# Environment/secrets
-.env
-.env.*
-!.env.example
-firebase-service-account.json
-firebase-service-account.*.json
+# Local database
+.mongo-data/
+
+# ============================================================
+# Temporary files
+# ============================================================
+
+*.tmp
+*.log
+
+# ============================================================
+# OS files
+# ============================================================
+
+.DS_Store
+Thumbs.db
+
+# ============================================================
+# Jupyter
+# ============================================================
+
+.ipynb_checkpoints
+
+# ============================================================
+# Type checking
+# ============================================================
+
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+
+# ============================================================
+# Profiling
+# ============================================================
+
+*.prof
+
+# ============================================================
+# Test artifacts
+# ============================================================
+
+frontend/test-results/
+playwright-report/
+test-results/
+
+# ============================================================
+# Project-specific local files
+# ============================================================
+
+test_gemini.py

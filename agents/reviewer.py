@@ -73,6 +73,16 @@ class ReviewerAgent:
         """Initialize the Reviewer Agent."""
         self.llm = LLMFactory.get("reviewer")
         self._setup_prompts()
+
+    def provider_info(self) -> dict[str, str]:
+        """Return ``{"provider": ..., "model": ...}`` for the last-resolved LLM."""
+        llm = getattr(self, "llm", None)
+        if llm is None:
+            return {"provider": "unknown", "model": "unknown"}
+        return {
+            "provider": getattr(llm, "provider_name", "unknown"),
+            "model": getattr(llm, "model", "unknown"),
+        }
     
     def _setup_prompts(self) -> None:
         """Set up prompts for reviewing and improving posts."""

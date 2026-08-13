@@ -1,74 +1,62 @@
-"""Dashboard endpoints that surface existing approval and scheduler state."""
+"""Dashboard endpoints — user-scoped summary metrics."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from approval.audit import AuditLog
-from approval.service import ApprovalService
-from scheduler.models import JobStatus
-from scheduler.service import SchedulerService
+from backend.app.api.deps import (
+    get_approval_repository,
+    get_audit_repository,
+    get_draft_repository,
+    get_scheduler_repository,
+)
+from backend.app.core.security import AuthenticatedUser, get_current_user
+from backend.app.repositories import (
+    ApprovalRepository,
+    AuditRepository,
+    DraftRepository,
+    SchedulerRepository,
+)
 from shared.schemas import DashboardActivityItem, DashboardSummaryResponse
 
 router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
 
 
 @router.get("/summary", response_model=DashboardSummaryResponse)
-async def get_dashboard_summary() -> DashboardSummaryResponse:
-    approval_service = ApprovalService()
-    scheduler_service = SchedulerService()
-    audit_log = AuditLog()
+async def get_dashboard_summary(
+    user: AuthenticatedUser = Depends(get_current_user),
+    drafts: DraftRepository = Depends(get_draft_repository),
+    approvals: ApprovalRepository = Depends(get_approval_repository),
+    scheduler: SchedulerRepository = Depends(get_scheduler_repository),
+    audit: AuditRepository = Depends(get_audit_repository),
+) -> DashboardSummaryResponse:
+    drafts_count = await drafts.count(user.uid)
+    published_count = await drafts.count(user.uid, status="published")
+    approved_count = await drafts.count(user.uid, status="approved")
+    pending_approvals = await approvals.count_for_user(user.uid, status="pending")
+    scheduled_count = await scheduler.count_for_user(user.uid, status="pending")
+    failed_count = await scheduler.count_for_user(user.uid, status="failed")
 
-    drafts = approval_service.store.storage.get_all_drafts()
-    tokens = approval_service.store.storage.get_all_tokens()
-    jobs = scheduler_service.get_all_jobs()
-
-    published_count = 0
-    pending_approval_count = 0
-    scheduled_count = 0
-    drafts_list: list[dict[str, Any]] = []
-
-    for draft_data in drafts.values():
-        draft = (
-            draft_data
-            if isinstance(draft_data, dict)
-            else draft_data.model_dump()
-        )
-        drafts_list.append(draft)
-        if draft.get("published_at"):
-            published_count += 1
-
-        token = (
-            tokens.get(draft.get("approval_token"))
-            if draft.get("approval_token")
-            else None
-        )
-        if token is not None and token.status.value == "pending":
-            pending_approval_count += 1
-
-    for job in jobs:
-        if job.status == JobStatus.PENDING:
-            scheduled_count += 1
-
+    activity = await audit.list_recent(user.uid, limit=8)
     return DashboardSummaryResponse(
-        drafts_count=len(drafts_list),
+        drafts_count=drafts_count,
         published_count=published_count,
+        approved_count=approved_count,
         scheduled_count=scheduled_count,
-        approval_queue_count=pending_approval_count,
+        failed_count=failed_count,
+        approval_queue_count=pending_approvals,
         recent_activity=[
             DashboardActivityItem(
-                event_type=event.event_type.value,
-                description=(
-                    event.details.get("title") or event.event_type.value
+                event_type=item.get("event_type", "event"),
+                description=item.get("description", item.get("event_type", "event")),
+                timestamp=(
+                    item["timestamp"].isoformat()
+                    if hasattr(item.get("timestamp"), "isoformat")
+                    else str(item.get("timestamp"))
                 ),
-                timestamp=event.timestamp.isoformat(),
             )
-            for event in sorted(
-                audit_log.events,
-                key=lambda event: event.timestamp,
-                reverse=True,
-            )[:8]
+            for item in activity
         ],
     )

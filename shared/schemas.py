@@ -38,6 +38,11 @@ class GenerateContentResponse(BaseModel):
     review_scores: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    # Phase 7.6: surface the persisted draft + token so the SPA can navigate
+    # to /drafts/{draft_id} immediately without polling /api/v1/approval/queue.
+    draft_id: Optional[str] = None
+    approval_token: Optional[str] = None
+    draft: Optional[Dict[str, Any]] = None
 
 
 class DashboardActivityItem(BaseModel):
@@ -49,12 +54,17 @@ class DashboardActivityItem(BaseModel):
 
 
 class DashboardSummaryResponse(BaseModel):
-    """Dashboard summary metrics."""
+    """Dashboard summary metrics.
+
+    Phase 8B P1-5 — extended with ``approved_count`` and ``failed_count``.
+    """
 
     drafts_count: int
     published_count: int
     scheduled_count: int
     approval_queue_count: int
+    approved_count: int = 0
+    failed_count: int = 0
     recent_activity: List[DashboardActivityItem] = Field(default_factory=list)
 
 
@@ -137,3 +147,95 @@ class PublishedDraftResponse(BaseModel):
     hashtags: List[str] = Field(default_factory=list)
     published_at: Optional[str] = None
     linkedin_post_id: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Phase 8B P1 — user profile, settings, publish-now
+# ---------------------------------------------------------------------------
+
+
+class UserProfileResponse(BaseModel):
+    """Phase 8B P1-10 — server-side profile resource.
+
+    Identity fields (uid, email, email_verified) are Firebase-owned and
+    are not editable through this resource. Only application-side
+    profile metadata is mutable.
+    """
+
+    uid: str
+    email: str
+    email_verified: bool
+    display_name: Optional[str] = None
+    headline: Optional[str] = None
+    bio: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    github_url: Optional[str] = None
+    avatar_url: Optional[str] = None
+    updated_at: str
+
+
+class UserProfileUpdateRequest(BaseModel):
+    """Mutable subset of the user profile. All fields optional (PATCH)."""
+
+    display_name: Optional[str] = Field(default=None, max_length=120)
+    headline: Optional[str] = Field(default=None, max_length=160)
+    bio: Optional[str] = Field(default=None, max_length=2000)
+    linkedin_url: Optional[str] = Field(default=None, max_length=500)
+    github_url: Optional[str] = Field(default=None, max_length=500)
+    avatar_url: Optional[str] = Field(default=None, max_length=500)
+
+
+# Enum-like string literals kept as plain strings for forward compatibility
+# with the existing string-typed Pydantic conventions in this module.
+PUBLISHING_MODES = ("manual", "scheduled")
+APPROVAL_MODES = ("email", "auto", "manual")
+
+
+class UserSettingsResponse(BaseModel):
+    """Phase 8B P1-11 — server-side settings resource.
+
+    `linkedin_connected` and `person_urn` are sourced from the LinkedIn
+    repository, NOT from this document. Settings that affect publishing
+    or notification behaviour live on the user document.
+    """
+
+    linkedin_connected: bool = False
+    person_urn: Optional[str] = None
+    linkedin_expires_at: Optional[str] = None
+    linkedin_scope: Optional[str] = None
+    publishing_mode: str = "manual"
+    approval_mode: str = "email"
+    notification_email: Optional[str] = None
+    default_image_provider: Optional[str] = None
+    default_image_model: Optional[str] = None
+    timezone: Optional[str] = None
+    updated_at: str
+
+
+class UserSettingsUpdateRequest(BaseModel):
+    """Mutable subset of user settings. All fields optional (PATCH).
+
+    Enum fields (``publishing_mode``, ``approval_mode``) are validated
+    server-side against ``PUBLISHING_MODES`` / ``APPROVAL_MODES``.
+    """
+
+    publishing_mode: Optional[str] = None
+    approval_mode: Optional[str] = None
+    notification_email: Optional[str] = Field(default=None, max_length=320)
+    timezone: Optional[str] = Field(default=None, max_length=64)
+
+
+class PublishNowResponse(BaseModel):
+    """Phase 8B P1-9 — synchronous on-demand publish response.
+
+    `linkedin_post_id` is the LinkedIn URN when the publish succeeded,
+    otherwise ``None`` (the response itself may still indicate failure
+    via the global error envelope; this shape is for the success path).
+    """
+
+    success: bool
+    draft_id: str
+    linkedin_post_id: Optional[str] = None
+    published_at: str
+    message: Optional[str] = None
+    already_published: bool = False
