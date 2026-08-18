@@ -44,6 +44,11 @@ class DraftResponse(BaseModel):
     updated_at: Optional[str] = None
     published_at: Optional[str] = None
     linkedin_post_id: Optional[str] = None
+    # Phase 8D / URL-to-LinkedIn. None for topic-mode drafts and all
+    # pre-feature drafts; persisted only when the draft was generated
+    # from a URL. The viewer surfaces these in the Status card.
+    source_url: Optional[str] = None
+    source_metadata: Optional[dict] = None
 
     class Config:
         populate_by_name = True
@@ -111,6 +116,8 @@ def _to_response(doc: dict) -> DraftResponse:
                 else doc.get("published_at")
             ),
             "linkedin_post_id": doc.get("linkedin_post_id"),
+            "source_url": doc.get("source_url"),
+            "source_metadata": doc.get("source_metadata"),
         }
     )
 

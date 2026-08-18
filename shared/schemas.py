@@ -43,6 +43,10 @@ class GenerateContentResponse(BaseModel):
     draft_id: Optional[str] = None
     approval_token: Optional[str] = None
     draft: Optional[Dict[str, Any]] = None
+    # Phase 8D / URL-to-LinkedIn. Only set when the draft was generated
+    # from a URL; never set for topic-mode drafts.
+    source_url: Optional[str] = None
+    source_metadata: Optional[Dict[str, Any]] = None
 
 
 class DashboardActivityItem(BaseModel):

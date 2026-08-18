@@ -12,6 +12,7 @@ from backend.app.repositories.scheduler_repository import SchedulerRepository
 from backend.app.repositories.linkedin_repository import LinkedInRepository
 from backend.app.repositories.audit_repository import AuditRepository
 from backend.app.repositories.oauth_state_repository import OAuthStateRepository
+from backend.app.repositories.source_job_repository import SourceJobRepository
 
 __all__ = [
     "UserRepository",
@@ -21,4 +22,5 @@ __all__ = [
     "LinkedInRepository",
     "AuditRepository",
     "OAuthStateRepository",
+    "SourceJobRepository",
 ]

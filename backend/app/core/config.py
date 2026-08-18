@@ -80,6 +80,33 @@ class Settings:
         self.image_provider = os.getenv("IMAGE_PROVIDER", "pollinations")
         self.image_model = os.getenv("IMAGE_MODEL", "flux")
 
+        # Source-generation (URL-to-LinkedIn) — Phase 8D / P0.
+        # Defaults are safe; override via env. The SSRF guard is in
+        # ``backend/app/services/sources/ssrf.py`` and reads these.
+        self.source_fetch_max_bytes: int = int(os.getenv("SOURCE_FETCH_MAX_BYTES", "5242880"))
+        self.source_fetch_max_redirects: int = int(os.getenv("SOURCE_FETCH_MAX_REDIRECTS", "5"))
+        self.source_fetch_timeout_seconds: float = float(os.getenv("SOURCE_FETCH_TIMEOUT_SECONDS", "20"))
+        self.source_fetch_total_timeout_seconds: float = float(
+            os.getenv("SOURCE_FETCH_TOTAL_TIMEOUT_SECONDS", "90")
+        )
+        self.source_github_max_bytes: int = int(os.getenv("SOURCE_GITHUB_MAX_BYTES", "1048576"))
+        self.source_html_max_bytes_after_strip: int = int(
+            os.getenv("SOURCE_HTML_MAX_BYTES_AFTER_STRIP", "1048576")
+        )
+        raw_ports = os.getenv("SSRF_ALLOWED_PORTS", "80,443")
+        self.ssrf_allowed_ports: frozenset = frozenset(
+            int(p.strip()) for p in raw_ports.split(",") if p.strip()
+        )
+        self.ssrf_allow_private: bool = (
+            os.getenv("SSRF_ALLOW_PRIVATE", "false").lower() in {"1", "true", "yes"}
+        )
+        self.github_token: Optional[str] = os.getenv("GITHUB_TOKEN")
+        self.source_extractor: str = os.getenv("SOURCE_EXTRACTOR", "trafilatura")
+        self.source_jobs_max_active_per_user: int = int(
+            os.getenv("SOURCE_JOBS_MAX_ACTIVE_PER_USER", "3")
+        )
+        self.source_jobs_rate_per_hour: int = int(os.getenv("SOURCE_JOBS_RATE_PER_HOUR", "10"))
+
     # --- validation helpers ----------------------------------------------
     def require_mongo(self) -> None:
         if not self.mongodb_uri:

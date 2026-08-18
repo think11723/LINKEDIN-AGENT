@@ -52,7 +52,9 @@ class TestContentWorkflow:
         workflow = ContentWorkflow()
         result = workflow.run("test topic")
 
-        mock_instance.run.assert_called_once_with("test topic")
+        mock_instance.run.assert_called_once_with(
+            "test topic", research_package=None
+        )
         assert result == expected_result
 
     @patch('workflows.content_workflow.ContentGraphWorkflow')

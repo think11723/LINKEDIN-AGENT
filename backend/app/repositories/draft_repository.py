@@ -18,6 +18,77 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+#: Maximum size of the persisted ``source_metadata`` blob (defence-in-depth
+#: against a runaway adapter). 8 KB keeps the document small and avoids
+#: noisy drafts; the adapter's own byte caps are the primary control.
+_SOURCE_METADATA_MAX_BYTES = 8192
+
+#: Keys whose presence in ``source_metadata`` is never persisted. Adapter
+#: metadata should describe the *source*, never credentials.
+_FORBIDDEN_METADATA_KEYS = frozenset(
+    {
+        "authorization",
+        "bearer",
+        "github_token",
+        "cookie",
+        "set-cookie",
+        "access_token",
+        "refresh_token",
+        "client_secret",
+        "api_key",
+        "secret",
+        "password",
+        "private_key",
+    }
+)
+
+
+def _sanitize_source_metadata(metadata: Optional[dict]) -> dict:
+    """Drop sensitive keys, cap nested string lengths, truncate overall size.
+
+    Defensive — adapters should never produce credential-shaped metadata,
+    but a single leaked token via this blob would be persisted into
+    Mongo and surfaced to the SPA. So we drop known-bad keys by name
+    and cap nested string lengths.
+    """
+    if not metadata:
+        return {}
+    cleaned: dict[str, Any] = {}
+    for key, value in metadata.items():
+        if key.lower() in _FORBIDDEN_METADATA_KEYS:
+            continue
+        if isinstance(value, str):
+            # Cap individual string values to a sane length.
+            if len(value) > 1024:
+                value = value[:1024] + "…"
+        elif isinstance(value, (list, tuple)):
+            value = [_truncate_meta(v) for v in value[:32]]
+        elif isinstance(value, dict):
+            # One level of recursion only — keeps the size bound tight.
+            value = {k: _truncate_meta(v) for k, v in list(value.items())[:16]}
+        cleaned[key] = value
+    # Final size bound on the serialized blob.
+    import json
+
+    serialized = json.dumps(cleaned, ensure_ascii=False, default=str)
+    if len(serialized.encode("utf-8")) > _SOURCE_METADATA_MAX_BYTES:
+        # Truncate by dropping least-useful keys (sorted by name) until
+        # we fit. The cap is generous; this is just a safety net.
+        while (
+            len(json.dumps(cleaned, ensure_ascii=False, default=str).encode("utf-8"))
+            > _SOURCE_METADATA_MAX_BYTES
+            and cleaned
+        ):
+            cleaned.pop(next(iter(cleaned)))
+    return cleaned
+
+
+def _truncate_meta(value: Any) -> Any:
+    if isinstance(value, str) and len(value) > 1024:
+        return value[:1024] + "…"
+    return value
+
+
 class DraftRepository:
     def __init__(self, db: AsyncIOMotorDatabase) -> None:
         self.col = db[COLLECTION_DRAFTS]
@@ -38,6 +109,8 @@ class DraftRepository:
         status: str = "draft",
         approval_token: Optional[str] = None,
         metadata: Optional[dict] = None,
+        source_url: Optional[str] = None,
+        source_metadata: Optional[dict] = None,
     ) -> dict:
         now = _utcnow()
         doc: dict[str, Any] = {
@@ -61,6 +134,12 @@ class DraftRepository:
         }
         if metadata:
             doc["metadata"] = dict(metadata)
+        # Phase 8D / URL-to-LinkedIn — only persisted when truthy so
+        # topic-mode drafts and pre-feature drafts are unchanged.
+        if source_url:
+            doc["source_url"] = source_url
+        if source_metadata:
+            doc["source_metadata"] = _sanitize_source_metadata(source_metadata)
         await self.col.insert_one(doc)
         return doc
 

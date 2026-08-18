@@ -14,6 +14,7 @@ from backend.app.repositories import (
     LinkedInRepository,
     OAuthStateRepository,
     SchedulerRepository,
+    SourceJobRepository,
     UserRepository,
 )
 
@@ -62,6 +63,13 @@ def get_oauth_state_repository(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> OAuthStateRepository:
     return OAuthStateRepository(db)
+
+
+def get_source_job_repository(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> SourceJobRepository:
+    """Phase 8D / URL-to-LinkedIn source-job repository."""
+    return SourceJobRepository(db)
 
 
 # Re-export so handlers can simply say `user: AuthenticatedUser = Depends(get_current_user)`.

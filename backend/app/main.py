@@ -32,6 +32,8 @@ from backend.app.core.security import init_firebase
 from backend.app.db import mongo as _mongo
 from backend.app.db.mongo import close_mongo, ensure_indexes, init_mongo
 from backend.app.services.scheduler_runner import SchedulerRunner
+from backend.app.services.source_job_runner import SourceJobRunner
+from backend.app.services.sources.ssrf import warn_if_allow_private
 
 logger = logging.getLogger(__name__)
 
@@ -64,10 +66,19 @@ async def lifespan(app: FastAPI):
     scheduler_runner.start()
     app.state.scheduler_runner = scheduler_runner
 
+    # Phase 8D / URL-to-LinkedIn — source-job runner for the new
+    # ``/generate-from-url`` endpoint. Mirrors the scheduler runner's
+    # in-process asyncio pattern.
+    source_runner = SourceJobRunner(poll_interval=2.0)
+    source_runner.start()
+    app.state.source_runner = source_runner
+    warn_if_allow_private()
+
     logger.info("Backend startup complete.")
     try:
         yield
     finally:
+        await source_runner.stop()
         await scheduler_runner.stop()
         await close_mongo()
         logger.info("Backend shutdown complete.")
@@ -163,6 +174,10 @@ async def health() -> dict[str, str]:
 
 
 if __name__ == "__main__":
+    import os
+
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Railway injects ``$PORT``; fall back to 8000 for local ``python -m``.
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run(app, host="0.0.0.0", port=port)

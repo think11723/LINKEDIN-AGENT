@@ -18,6 +18,7 @@ COLLECTION_SCHEDULED_JOBS = "scheduled_jobs"
 COLLECTION_LINKEDIN_ACCOUNTS = "linkedin_accounts"
 COLLECTION_OAUTH_STATES = "oauth_states"
 COLLECTION_AUDIT_EVENTS = "audit_events"
+COLLECTION_SOURCE_JOBS = "source_jobs"  # Phase 8D / URL-to-LinkedIn
 
 _client: Optional[AsyncIOMotorClient] = None
 _db: Optional[AsyncIOMotorDatabase] = None
@@ -106,6 +107,22 @@ async def ensure_indexes() -> None:
     # audit_events --------------------------------------------------------
     await db[COLLECTION_AUDIT_EVENTS].create_index(
         [("user_id", 1), ("timestamp", -1)]
+    )
+
+    # source_jobs --------------------------------------------------------
+    # Phase 8D / URL-to-LinkedIn.
+    # job_id is unique; user-scoped history is queried by (user_id,
+    # created_at desc); the claim query hits (status, created_at);
+    # TTL cleans up finished jobs after 7 days.
+    await db[COLLECTION_SOURCE_JOBS].create_index("job_id", unique=True)
+    await db[COLLECTION_SOURCE_JOBS].create_index(
+        [("user_id", 1), ("created_at", -1)]
+    )
+    await db[COLLECTION_SOURCE_JOBS].create_index(
+        [("status", 1), ("created_at", 1)]
+    )
+    await db[COLLECTION_SOURCE_JOBS].create_index(
+        "expires_at", expireAfterSeconds=0
     )
 
     logger.info("MongoDB indexes ensured.")

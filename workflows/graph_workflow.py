@@ -3,7 +3,7 @@
 This module provides LangGraph-based orchestration for executing agents in sequence.
 """
 
-from typing import Optional, List, Dict, Any, TypedDict, Annotated
+from typing import Optional, List, Dict, Any, TypedDict, Annotated, TYPE_CHECKING
 from langgraph.graph import StateGraph, END
 from models.workflow_models import WorkflowState, WorkflowResult
 from models.context_models import Context
@@ -14,6 +14,9 @@ from agents.reviewer import ReviewerAgent, ReviewResult
 from services.context_builder import ContextBuilder
 from services.research import ResearchService
 from utils.logger import logger
+
+if TYPE_CHECKING:  # pragma: no cover - import only for type checking
+    from services.research.models import ResearchPackage
 
 
 class GraphState(TypedDict):
@@ -222,24 +225,32 @@ class ContentGraphWorkflow:
     
     def _research_node(self, state: GraphState) -> GraphState:
         """Research node.
-        
+
+        Phase 8D / URL-to-LinkedIn: if a pre-built ``research_package``
+        is already in the state (URL mode), skip live research and
+        pass the package straight through to the writer. Otherwise,
+        call the legacy ``ResearchService.research(topic)`` path.
+
         Args:
             state: Current graph state.
-            
+
         Returns:
             Updated state with research package.
         """
         logger.info("Starting Research Service")
         logger.info(f"[STATE TRACE] Before research: approved={state.get('approved')}, review_exists={state.get('review') is not None}, draft_exists={state.get('draft') is not None}, error={state.get('error')}")
-        
-        try:
-            research_package = self.research_service.research(state["topic"])
-            state["research_package"] = research_package
-            logger.info("Research completed")
-        except Exception as e:
-            logger.error(f"Research failed: {e}")
-            state["error"] = str(e)
-        
+
+        if state.get("research_package") is not None:
+            logger.info("Research package already supplied (URL mode); skipping live research")
+        else:
+            try:
+                research_package = self.research_service.research(state["topic"])
+                state["research_package"] = research_package
+                logger.info("Research completed")
+            except Exception as e:
+                logger.error(f"Research failed: {e}")
+                state["error"] = str(e)
+
         logger.info(f"[STATE TRACE] After research: approved={state.get('approved')}, review_exists={state.get('review') is not None}, draft_exists={state.get('draft') is not None}, error={state.get('error')}")
         return state
     
@@ -526,22 +537,33 @@ class ContentGraphWorkflow:
         logger.info(f"Iteration {state['iteration']}: Review FAILED - Will rewrite (Decision: {decision if decision else 'N/A'}, Score: {state['review'].scores.overall}/10)")
         return "continue"
     
-    def run(self, topic: str) -> WorkflowResult:
+    def run(
+        self,
+        topic: str,
+        *,
+        research_package: Optional["ResearchPackage"] = None,
+    ) -> WorkflowResult:
         """Execute the LangGraph workflow for a given topic.
-        
+
+        ``research_package``: optional pre-built ``ResearchPackage``
+        (URL mode). When present, the ``_research_node`` short-circuits
+        and reuses the package; otherwise the graph performs live
+        research exactly as before.
+
         Args:
             topic: User's topic or request for LinkedIn content.
-            
+            research_package: optional pre-built research package.
+
         Returns:
             WorkflowResult containing the final post, approval status, and metadata.
         """
         logger.info(f"Starting LangGraph workflow for topic: {topic}")
-        
+
         # Initialize state
         initial_state: GraphState = {
             "topic": topic,
             "context": None,
-            "research_package": None,
+            "research_package": research_package,
             "execution_plan": None,
             "draft": None,
             "review": None,
