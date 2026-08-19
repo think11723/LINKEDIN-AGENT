@@ -107,6 +107,60 @@ class Settings:
         )
         self.source_jobs_rate_per_hour: int = int(os.getenv("SOURCE_JOBS_RATE_PER_HOUR", "10"))
 
+        # Search (Phase 8E) --------------------------------------------
+        # The multi-provider search chain in services.search uses
+        # these env vars to know which SearXNG instances to rotate
+        # through and which fallback sources are enabled. No API
+        # keys are required for any of them.
+        # SEARXNG_INSTANCES is a comma-separated list of full URLs;
+        # an empty list is valid (the orchestrator will skip
+        # SearXNG and move to Wikipedia).
+        searxng_raw = os.getenv("SEARXNG_INSTANCES", "")
+        self.searxng_instances: List[str] = _split_csv(
+            searxng_raw, default=[]
+        )
+        self.wikipedia_api_url: str = os.getenv(
+            "WIKIPEDIA_API_URL", "https://en.wikipedia.org"
+        ).strip()
+        self.hn_algolia_api_url: str = os.getenv(
+            "HN_ALGOLIA_API_URL", "https://hn.algolia.com"
+        ).strip()
+        self.search_timeout_seconds: float = float(
+            os.getenv("SEARCH_TIMEOUT_SECONDS", "6")
+        )
+        self.search_max_bytes: int = int(
+            os.getenv("SEARCH_MAX_BYTES", str(1 * 1024 * 1024))
+        )
+        # Per-provider allowlist of hostnames the search layer is
+        # permitted to contact. Built from the configured providers
+        # below; the SSRF guard uses this as the ``allow_hosts``
+        # set on every outbound request.
+        self.search_allowlist: List[str] = self._build_search_allowlist()
+
+    def _build_search_allowlist(self) -> List[str]:
+        """Compute the set of hostnames the search layer may
+        contact. Built from the configured SearXNG instances plus
+        the Wikipedia and HN Algolia base URLs.
+        """
+        from urllib.parse import urlparse
+        hosts: List[str] = []
+        seen: set[str] = set()
+
+        def _add(url: str) -> None:
+            try:
+                host = (urlparse(url).hostname or "").lower()
+            except ValueError:
+                return
+            if host and host not in seen:
+                seen.add(host)
+                hosts.append(host)
+
+        for inst in self.searxng_instances:
+            _add(inst)
+        _add(self.wikipedia_api_url)
+        _add(self.hn_algolia_api_url)
+        return hosts
+
     # --- validation helpers ----------------------------------------------
     def require_mongo(self) -> None:
         if not self.mongodb_uri:
