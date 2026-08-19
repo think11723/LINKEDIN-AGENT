@@ -107,7 +107,7 @@ def test_content_endpoint_persists_provider_via_metadata(client_a, monkeypatch):
 
     payload = GenerateContentRequest(topic="x")
 
-    def fake_run(_self, _payload):
+    def fake_run(_payload):
         return GenerateContentResponse(
             topic="x",
             final_post=LinkedInPostPayload(
@@ -125,7 +125,17 @@ def test_content_endpoint_persists_provider_via_metadata(client_a, monkeypatch):
             },
         )
 
-    monkeypatch.setattr(workflow_service.WorkflowService, "generate_content", fake_run)
+    # ``generate_content`` is now async; the FastAPI endpoint
+    # does ``await service.generate_content(payload)``. Wrap the
+    # sync return in an async coroutine so the endpoint's await
+    # works.
+    from unittest.mock import AsyncMock
+    async_fake_run = AsyncMock(wraps=AsyncMock(side_effect=fake_run))
+    async_fake_run.return_value = None  # use side_effect
+    # The simplest approach: define a proper async wrapper.
+    async def async_generate_content(self, payload):
+        return fake_run(payload)
+    monkeypatch.setattr(workflow_service.WorkflowService, "generate_content", async_generate_content)
 
     response = client_a.post("/api/v1/content/generate", json={"topic": "x"})
     assert response.status_code == 200
@@ -146,10 +156,13 @@ def test_failed_generation_does_not_falsely_record_provider(client_a, monkeypatc
     """A failed run must NOT produce a draft with a fake provider record."""
     from backend.app.services import workflow_service
 
-    def boom(_self, _payload):
+    def boom(_payload):
         raise RuntimeError("SECRET-LLM-KEY=sk-DO-NOT-LEAK")
 
-    monkeypatch.setattr(workflow_service.WorkflowService, "generate_content", boom)
+    async def async_boom(self, payload):
+        return boom(payload)
+
+    monkeypatch.setattr(workflow_service.WorkflowService, "generate_content", async_boom)
 
     response = client_a.post("/api/v1/content/generate", json={"topic": "boom"})
     assert response.status_code == 500

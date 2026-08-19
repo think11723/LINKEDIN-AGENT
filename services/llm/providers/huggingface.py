@@ -62,13 +62,13 @@ class HuggingFaceProvider(BaseProvider):
         except (KeyError, IndexError, TypeError) as e:
             raise MalformedResponseError(f"Failed to parse response: {str(e)}")
     
-    def generate_text(self, prompt: str, **kwargs) -> LLMResponse:
-        """Generate text from prompt.
-        
+    async def generate_text(self, prompt: str, **kwargs) -> LLMResponse:
+        """Generate text from prompt. Async.
+
         Args:
             prompt: Input prompt
             **kwargs: Additional parameters (temperature, max_tokens, etc.)
-            
+
         Returns:
             LLMResponse with generated text and metadata
         """
@@ -144,20 +144,25 @@ class HuggingFaceProvider(BaseProvider):
             self._log_request("generate_text", prompt, 0, False, str(e))
             raise
     
-    def generate_json(self, prompt: str, **kwargs) -> Dict[str, Any]:
+    async def generate_json(self, prompt: str, **kwargs) -> Dict[str, Any]:
         """Generate JSON from prompt.
-        
+
         Args:
             prompt: Input prompt
             **kwargs: Additional parameters
-            
+
         Returns:
             Dictionary with parsed JSON response
         """
         # Add JSON formatting instruction to prompt
         json_prompt = f"{prompt}\n\nRespond with valid JSON only."
-        
-        response = self.generate_text(json_prompt, **kwargs)
+
+        # ``generate_text`` is async (the base contract is now
+        # async). Awaiting it actually executes the call;
+        # without ``await`` we'd get a coroutine and the next
+        # line (``response.text``) would raise
+        # "'coroutine' object has no attribute 'text'".
+        response = await self.generate_text(json_prompt, **kwargs)
         
         try:
             # Extract JSON from response

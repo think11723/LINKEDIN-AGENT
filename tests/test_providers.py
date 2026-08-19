@@ -1,6 +1,7 @@
 """Tests for LLM providers with mocked HTTP responses."""
 
 import json
+import asyncio
 
 import pytest
 from unittest.mock import Mock, patch, MagicMock
@@ -42,7 +43,7 @@ class TestHuggingFaceProvider:
         mock_post.return_value = mock_response
         
         provider = HuggingFaceProvider(api_key="test_key", model="test_model")
-        response = provider.generate_text("Test prompt")
+        response = asyncio.run(provider.generate_text("Test prompt"))
         
         assert response.text == "Test response"
         assert response.model == "test_model"
@@ -57,7 +58,7 @@ class TestHuggingFaceProvider:
         
         provider = HuggingFaceProvider(api_key="test_key", model="test_model")
         with pytest.raises(RateLimitError):
-            provider.generate_text("Test prompt")
+            asyncio.run(provider.generate_text("Test prompt"))
     
     @patch('services.llm.providers.huggingface.requests.post')
     def test_generate_text_invalid_key(self, mock_post):
@@ -68,7 +69,7 @@ class TestHuggingFaceProvider:
         
         provider = HuggingFaceProvider(api_key="test_key", model="test_model")
         with pytest.raises(NetworkError):
-            provider.generate_text("Test prompt")
+            asyncio.run(provider.generate_text("Test prompt"))
     
     @patch('services.llm.providers.huggingface.requests.post')
     def test_generate_text_model_not_found(self, mock_post):
@@ -79,7 +80,7 @@ class TestHuggingFaceProvider:
         
         provider = HuggingFaceProvider(api_key="test_key", model="test_model")
         with pytest.raises(InvalidModelError):
-            provider.generate_text("Test prompt")
+            asyncio.run(provider.generate_text("Test prompt"))
     
     @patch('services.llm.providers.huggingface.requests.post')
     def test_generate_text_timeout(self, mock_post):
@@ -88,7 +89,7 @@ class TestHuggingFaceProvider:
         
         provider = HuggingFaceProvider(api_key="test_key", model="test_model")
         with pytest.raises(TimeoutError):
-            provider.generate_text("Test prompt")
+            asyncio.run(provider.generate_text("Test prompt"))
     
     @patch('services.llm.providers.huggingface.requests.post')
     def test_generate_text_malformed_response(self, mock_post):
@@ -108,7 +109,7 @@ class TestHuggingFaceProvider:
 
         provider = HuggingFaceProvider(api_key="test_key", model="test_model")
         with pytest.raises(MalformedResponseError):
-            provider.generate_text("Test prompt")
+            asyncio.run(provider.generate_text("Test prompt"))
     
     @patch('services.llm.providers.huggingface.requests.post')
     def test_generate_text_empty_response(self, mock_post):
@@ -120,7 +121,7 @@ class TestHuggingFaceProvider:
         
         provider = HuggingFaceProvider(api_key="test_key", model="test_model")
         with pytest.raises(MalformedResponseError):
-            provider.generate_text("Test prompt")
+            asyncio.run(provider.generate_text("Test prompt"))
 
 
 class TestOpenRouterProvider:
@@ -149,7 +150,7 @@ class TestOpenRouterProvider:
         mock_post.return_value = mock_response
         
         provider = OpenRouterProvider(api_key="test_key", model="test_model")
-        response = provider.generate_text("Test prompt")
+        response = asyncio.run(provider.generate_text("Test prompt"))
         
         assert response.text == "Test response"
         assert response.tokens_used == 100
@@ -164,7 +165,7 @@ class TestOpenRouterProvider:
         
         provider = OpenRouterProvider(api_key="test_key", model="test_model")
         with pytest.raises(RateLimitError):
-            provider.generate_text("Test prompt")
+            asyncio.run(provider.generate_text("Test prompt"))
     
     @patch('services.llm.providers.openrouter.requests.post')
     def test_generate_text_malformed_response(self, mock_post):
@@ -176,7 +177,7 @@ class TestOpenRouterProvider:
         
         provider = OpenRouterProvider(api_key="test_key", model="test_model")
         with pytest.raises(MalformedResponseError):
-            provider.generate_text("Test prompt")
+            asyncio.run(provider.generate_text("Test prompt"))
 
 
 class TestGroqProvider:
@@ -205,7 +206,7 @@ class TestGroqProvider:
         mock_post.return_value = mock_response
         
         provider = GroqProvider(api_key="test_key", model="test_model")
-        response = provider.generate_text("Test prompt")
+        response = asyncio.run(provider.generate_text("Test prompt"))
         
         assert response.text == "Test response"
         assert response.tokens_used == 100
@@ -220,4 +221,4 @@ class TestGroqProvider:
         
         provider = GroqProvider(api_key="test_key", model="test_model")
         with pytest.raises(RateLimitError):
-            provider.generate_text("Test prompt")
+            asyncio.run(provider.generate_text("Test prompt"))

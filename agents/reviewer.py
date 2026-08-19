@@ -179,27 +179,27 @@ TITLE: [improved title]
 CONTENT: [improved content]
 HASHTAGS: [improved hashtags]"""
     
-    def review(self, post: LinkedInPost, context: Optional[Context] = None) -> ReviewResult:
+    async def review(self, post: LinkedInPost, context: Optional[Context] = None) -> ReviewResult:
         """Review and potentially improve a LinkedIn post.
-        
+
         Args:
             post: LinkedInPost from the Writer Agent.
             context: Unified context object with user preferences.
-            
+
         Returns:
             ReviewResult with scores, feedback, and potentially improved post.
         """
         # Get comprehensive review
-        scores, feedback, decision = self._get_review(post)
-        
+        scores, feedback, decision = await self._get_review(post)
+
         # Decide whether to improve based on overall score
         if scores.overall >= 8:
             final_post = post
             was_improved = False
         else:
-            final_post = self._improve_post(post)
+            final_post = await self._improve_post(post)
             was_improved = True
-        
+
         return ReviewResult(
             original_post=post,
             final_post=final_post,
@@ -208,13 +208,13 @@ HASHTAGS: [improved hashtags]"""
             was_improved=was_improved,
             decision=decision
         )
-    
-    def _get_review(self, post: LinkedInPost) -> tuple[ReviewScores, str, Optional[ReviewDecision]]:
+
+    async def _get_review(self, post: LinkedInPost) -> tuple[ReviewScores, str, Optional[ReviewDecision]]:
         """Get review scores, feedback, and decision for a post.
-        
+
         Args:
             post: LinkedInPost to review.
-            
+
         Returns:
             Tuple of ReviewScores, feedback string, and ReviewDecision.
         """
@@ -223,9 +223,14 @@ HASHTAGS: [improved hashtags]"""
             content=post.content,
             hashtags=", ".join(post.hashtags)
         )
-        
-        response = self.llm.generate_text(prompt, temperature=0.3)
-        
+
+        # The LLM is async (FallbackProvider.generate_text is a
+        # coroutine). Awaiting it actually executes the call; without
+        # ``await`` we'd get a coroutine object and the next line
+        # (``response.text``) would fail with
+        # "'coroutine' object has no attribute 'text'".
+        response = await self.llm.generate_text(prompt, temperature=0.3)
+
         return self._parse_review_response(response.text)
     
     def _parse_review_response(self, response: str) -> tuple[ReviewScores, str, Optional[ReviewDecision]]:
@@ -353,12 +358,12 @@ HASHTAGS: [improved hashtags]"""
         
         return scores, feedback, review_decision
     
-    def _improve_post(self, post: LinkedInPost) -> LinkedInPost:
+    async def _improve_post(self, post: LinkedInPost) -> LinkedInPost:
         """Improve a LinkedIn post based on review.
-        
+
         Args:
             post: Original LinkedInPost.
-            
+
         Returns:
             Improved LinkedInPost.
         """
@@ -367,9 +372,11 @@ HASHTAGS: [improved hashtags]"""
             content=post.content,
             hashtags=", ".join(post.hashtags)
         )
-        
-        response = self.llm.generate_text(prompt, temperature=0.3)
-        
+
+        # The LLM is async; await it so we get the actual
+        # ``LLMResponse`` rather than a coroutine.
+        response = await self.llm.generate_text(prompt, temperature=0.3)
+
         return self._parse_improve_response(response.text, post)
     
     def _parse_improve_response(self, response: str, original_post: LinkedInPost) -> LinkedInPost:

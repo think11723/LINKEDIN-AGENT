@@ -179,30 +179,32 @@ class BaseProvider(ABC):
             raise InvalidModelError(f"Model name is required for {self.__class__.__name__}")
     
     @abstractmethod
-    def generate_text(self, prompt: str, **kwargs) -> LLMResponse:
-        """Generate text from prompt.
-        
+    async def generate_text(self, prompt: str, **kwargs) -> LLMResponse:
+        """Generate text from prompt. Async so callers can ``await`` the
+        result and so HTTP libraries like ``httpx.AsyncClient`` can be
+        used without blocking the event loop.
+
         Args:
             prompt: Input prompt
             **kwargs: Additional provider-specific parameters
-            
+
         Returns:
             LLMResponse with generated text and metadata
         """
-        pass
-    
+        raise NotImplementedError
+
     @abstractmethod
-    def generate_json(self, prompt: str, **kwargs) -> Dict[str, Any]:
-        """Generate JSON from prompt.
-        
+    async def generate_json(self, prompt: str, **kwargs) -> Dict[str, Any]:
+        """Generate JSON from prompt. Async; see :meth:`generate_text`.
+
         Args:
             prompt: Input prompt
             **kwargs: Additional provider-specific parameters
-            
+
         Returns:
             Dictionary with parsed JSON response
         """
-        pass
+        raise NotImplementedError
     
     @abstractmethod
     def health_check(self) -> bool:

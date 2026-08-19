@@ -54,13 +54,13 @@ class GroqProvider(BaseProvider):
         except (KeyError, IndexError, TypeError) as e:
             raise MalformedResponseError(f"Failed to parse response: {str(e)}")
     
-    def generate_text(self, prompt: str, **kwargs) -> LLMResponse:
-        """Generate text from prompt.
-        
+    async def generate_text(self, prompt: str, **kwargs) -> LLMResponse:
+        """Generate text from prompt. Async.
+
         Args:
             prompt: Input prompt
             **kwargs: Additional parameters (temperature, max_tokens, etc.)
-            
+
         Returns:
             LLMResponse with generated text and metadata
         """
@@ -141,7 +141,7 @@ class GroqProvider(BaseProvider):
             self._log_request("generate_text", prompt, 0, False, str(e))
             raise
     
-    def generate_json(self, prompt: str, **kwargs) -> Dict[str, Any]:
+    async def generate_json(self, prompt: str, **kwargs) -> Dict[str, Any]:
         """Generate JSON from prompt.
         
         Args:

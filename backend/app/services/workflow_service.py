@@ -25,7 +25,7 @@ class WorkflowService:
     def __init__(self) -> None:
         self._workflow = ContentWorkflow()
 
-    def generate_content(
+    async def generate_content(
         self,
         payload: GenerateContentRequest,
         *,
@@ -46,7 +46,12 @@ class WorkflowService:
         if not topic:
             raise HTTPException(status_code=400, detail="Topic cannot be empty")
 
-        result = self._workflow.run(
+        # The workflow (and its LangGraph) is async because the
+        # Writer and Reviewer nodes await the LLM. ``await`` it
+        # here so we do not call an async method from a sync
+        # context (which would create a coroutine that the caller
+        # then has to deal with).
+        result = await self._workflow.run(
             topic, research_package=research_package
         )
         if result.error:

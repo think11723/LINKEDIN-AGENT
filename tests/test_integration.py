@@ -5,12 +5,12 @@ Validates the complete pipeline from topic to publish.
 
 import sys
 import os
+import asyncio
 from pathlib import Path
 
 # Add project root to Python path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
-
 import logging
 from typing import Dict, Any
 
@@ -141,7 +141,7 @@ class IntegrationTest:
             execution_plan = planner.plan(self.test_topic, context)
             
             writer = WriterAgent()
-            post = writer.write(
+            post = asyncio.run(writer.write(
                 topic=execution_plan.topic,
                 intent=execution_plan.intent,
                 user_prompt=self.test_topic,
@@ -149,8 +149,7 @@ class IntegrationTest:
                 writing_style=execution_plan.writing_style,
                 context=context,
                 execution_plan=execution_plan
-            )
-            
+            ))
             if post and post.content:
                 self.record_result(
                     "Writer",
@@ -194,7 +193,7 @@ class IntegrationTest:
             execution_plan = planner.plan(self.test_topic, context)
             
             writer = WriterAgent()
-            post = writer.write(
+            post = asyncio.run(writer.write(
                 topic=execution_plan.topic,
                 intent=execution_plan.intent,
                 user_prompt=self.test_topic,
@@ -202,11 +201,9 @@ class IntegrationTest:
                 writing_style=execution_plan.writing_style,
                 context=context,
                 execution_plan=execution_plan
-            )
-            
+            ))
             reviewer = ReviewerAgent()
-            review = reviewer.review(post, context)
-            
+            review = asyncio.run(reviewer.review(post, context))
             if review and review.scores:
                 self.record_result(
                     "Reviewer",
@@ -250,7 +247,7 @@ class IntegrationTest:
             execution_plan = planner.plan(self.test_topic, context)
             
             writer = WriterAgent()
-            post = writer.write(
+            post = asyncio.run(writer.write(
                 topic=execution_plan.topic,
                 intent=execution_plan.intent,
                 user_prompt=self.test_topic,
@@ -258,10 +255,11 @@ class IntegrationTest:
                 writing_style=execution_plan.writing_style,
                 context=context,
                 execution_plan=execution_plan
-            )
-            
+
+            ))
+
             image_prompt_agent = ImagePromptAgent()
-            image_prompt = image_prompt_agent.generate(post)
+            image_prompt = asyncio.run(image_prompt_agent.generate(post))
             
             if image_prompt and image_prompt.prompt:
                 self.record_result(
@@ -308,7 +306,7 @@ class IntegrationTest:
             execution_plan = planner.plan(self.test_topic, context)
             
             writer = WriterAgent()
-            post = writer.write(
+            post = asyncio.run(writer.write(
                 topic=execution_plan.topic,
                 intent=execution_plan.intent,
                 user_prompt=self.test_topic,
@@ -316,10 +314,11 @@ class IntegrationTest:
                 writing_style=execution_plan.writing_style,
                 context=context,
                 execution_plan=execution_plan
-            )
-            
+
+            ))
+
             image_prompt_agent = ImagePromptAgent()
-            image_prompt = image_prompt_agent.generate(post)
+            image_prompt = asyncio.run(image_prompt_agent.generate(post))
             
             image_service = ImageService()
             image_path = image_service.generate_image(
@@ -428,7 +427,7 @@ class IntegrationTest:
             execution_plan = planner.plan(self.test_topic, context)
             
             writer = WriterAgent()
-            post = writer.write(
+            post = asyncio.run(writer.write(
                 topic=execution_plan.topic,
                 intent=execution_plan.intent,
                 user_prompt=self.test_topic,
@@ -436,8 +435,9 @@ class IntegrationTest:
                 writing_style=execution_plan.writing_style,
                 context=context,
                 execution_plan=execution_plan
-            )
-            
+
+            ))
+
             approval_service = ApprovalService()
             draft_id = approval_service.create_draft(
                 topic=self.test_topic,

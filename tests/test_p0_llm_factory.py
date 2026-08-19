@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import asyncio
 
 
 def _reload_factory():
@@ -26,13 +27,13 @@ def test_cache_key_includes_model(monkeypatch):
             super().__init__(api_key=api_key, model=model, timeout=timeout, max_retries=max_retries)
             self.tag = _tag
 
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             return type("R", (), {"text": "ok"})()
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return type("R", (), {"text": "ok"})()
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     LLMFactory.register_provider("groq", _RecordingProvider)
@@ -84,24 +85,24 @@ def test_transient_failure_evicts_cache(monkeypatch):
             super().__init__(**kwargs)
             self.calls = 0
 
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             self.calls += 1
             raise RateLimitError("429 from upstream")
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return self.generate_text(prompt, **_kw)
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     class _OkProvider(f.BaseProvider):
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             return type("R", (), {"text": "ok"})()
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return self.generate_text(prompt, **_kw)
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     LLMFactory.register_provider("groq", _TransientFailOnCall)
@@ -149,13 +150,13 @@ def test_transient_failure_evicts_cache(monkeypatch):
             super().__init__(**kwargs)
             raise RateLimitError("429 transient during construct")
 
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             raise NotImplementedError
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             raise NotImplementedError
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     LLMFactory.register_provider("groq", _FailOnConstruct)
@@ -185,13 +186,13 @@ def test_each_provider_uses_its_own_api_key(monkeypatch):
             super().__init__(**kwargs)
             seen.append(self.api_key)
 
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             return type("R", (), {"text": "ok"})()
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return self.generate_text(prompt, **_kw)
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     LLMFactory.register_provider("groq", _ProbeProvider)
@@ -250,14 +251,14 @@ def test_fallback_walks_to_secondary_on_runtime_rate_limit(monkeypatch):
             super().__init__(**kwargs)
             self.calls = 0
 
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             self.calls += 1
             raise RateLimitError("429 Too Many Requests from primary")
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return self.generate_text(prompt, **_kw)
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     class _Ok(f.BaseProvider):
@@ -265,14 +266,14 @@ def test_fallback_walks_to_secondary_on_runtime_rate_limit(monkeypatch):
             super().__init__(**kwargs)
             self.calls = 0
 
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             self.calls += 1
             return type("R", (), {"text": "ok", "model": self.model})()
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return self.generate_text(prompt, **_kw)
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     LLMFactory.register_provider("groq", _RateLimited)
@@ -293,7 +294,7 @@ def test_fallback_walks_to_secondary_on_runtime_rate_limit(monkeypatch):
     LLMFactory.register_provider("huggingface", _Ok)
 
     fallback = LLMFactory.fallback("writer")
-    response = fallback.generate_text("hello")
+    response = asyncio.run(fallback.generate_text("hello"))
     assert response.text == "ok"
     # The primary was tried (and failed) and the secondary was tried (and succeeded).
     # The fallback provider now reports the secondary as the last successful one.
@@ -311,23 +312,23 @@ def test_fallback_walks_to_tertiary_when_secondary_also_fails(monkeypatch):
     LLMFactory = _reload_factory()
 
     class _RateLimited(f.BaseProvider):
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             raise RateLimitError("429 from upstream")
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return self.generate_text(prompt, **_kw)
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     class _Ok(f.BaseProvider):
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             return type("R", (), {"text": "ok", "model": self.model})()
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return self.generate_text(prompt, **_kw)
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     LLMFactory.register_provider("groq", _RateLimited)
@@ -348,7 +349,7 @@ def test_fallback_walks_to_tertiary_when_secondary_also_fails(monkeypatch):
     LLMFactory.register_provider("huggingface", _Ok)
 
     fallback = LLMFactory.fallback("writer")
-    response = fallback.generate_text("hi")
+    response = asyncio.run(fallback.generate_text("hi"))
     assert response.text == "ok"
     assert fallback.provider_name == "huggingface"
 
@@ -366,13 +367,13 @@ def test_fallback_raises_when_all_providers_fail(monkeypatch):
     LLMFactory = _reload_factory()
 
     class _RateLimited(f.BaseProvider):
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             raise RateLimitError("429 from upstream")
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return self.generate_text(prompt, **_kw)
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     LLMFactory.register_provider("groq", _RateLimited)
@@ -394,7 +395,7 @@ def test_fallback_raises_when_all_providers_fail(monkeypatch):
 
     fallback = LLMFactory.fallback("writer")
     try:
-        fallback.generate_text("hi")
+        asyncio.run(fallback.generate_text("hi"))
     except ProviderAllFailedError as exc:
         # The structured envelope matches the documented shape.
         assert exc.error_code == "provider_all_failed"
@@ -427,23 +428,23 @@ def test_fallback_raises_provider_all_failed_error_on_404(monkeypatch):
     LLMFactory = _reload_factory()
 
     class _ModelMissing(f.BaseProvider):
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             raise InvalidModelError("Model not found: llama-3.3-70b-versatile")
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return self.generate_text(prompt, **_kw)
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     class _Ok(f.BaseProvider):
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             return type("R", (), {"text": "ok", "model": self.model})()
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return self.generate_text(prompt, **_kw)
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     LLMFactory.register_provider("groq", _ModelMissing)
@@ -464,7 +465,7 @@ def test_fallback_raises_provider_all_failed_error_on_404(monkeypatch):
     LLMFactory.register_provider("huggingface", _Ok)
 
     fallback = LLMFactory.fallback("writer")
-    response = fallback.generate_text("hi")
+    response = asyncio.run(fallback.generate_text("hi"))
     assert response.text == "ok"
     assert fallback.provider_name == "openrouter"
 
@@ -483,13 +484,13 @@ def test_fallback_raises_provider_all_failed_when_secondary_also_404(monkeypatch
     LLMFactory = _reload_factory()
 
     class _ModelMissing(f.BaseProvider):
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             raise InvalidModelError("Model not found: deprecated-2024")
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return self.generate_text(prompt, **_kw)
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     LLMFactory.register_provider("groq", _ModelMissing)
@@ -511,7 +512,7 @@ def test_fallback_raises_provider_all_failed_when_secondary_also_404(monkeypatch
 
     fallback = LLMFactory.fallback("writer")
     try:
-        fallback.generate_text("hi")
+        asyncio.run(fallback.generate_text("hi"))
     except ProviderAllFailedError as exc:
         assert exc.error_code == "provider_all_failed"
         types = [a.error_type for a in exc.attempts]
@@ -554,23 +555,23 @@ def test_fallback_handles_missing_api_key_on_primary(monkeypatch):
                 "API key not found for provider: groq"
             )
 
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             raise NotImplementedError
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             raise NotImplementedError
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return False
 
     class _Ok(f.BaseProvider):
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             return type("R", (), {"text": "ok", "model": self.model})()
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return self.generate_text(prompt, **_kw)
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     LLMFactory.register_provider("groq", _MissingKeyGroq)
@@ -591,7 +592,7 @@ def test_fallback_handles_missing_api_key_on_primary(monkeypatch):
     LLMFactory.register_provider("huggingface", _Ok)
 
     fallback = LLMFactory.fallback("writer")
-    response = fallback.generate_text("hi")
+    response = asyncio.run(fallback.generate_text("hi"))
     assert response.text == "ok"
     # The primary raised MissingAPIKeyError at instantiation, so the
     # secondary (openrouter) is the one that answered.
@@ -615,13 +616,13 @@ def test_fallback_missing_api_key_is_recorded_in_attempts(monkeypatch):
         def __init__(self, **kwargs):
             raise MissingAPIKeyError("API key not found for provider: groq")
 
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             raise NotImplementedError
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             raise NotImplementedError
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return False
 
     LLMFactory.register_provider("groq", _MissingKey)
@@ -643,7 +644,7 @@ def test_fallback_missing_api_key_is_recorded_in_attempts(monkeypatch):
 
     fallback = LLMFactory.fallback("writer")
     try:
-        fallback.generate_text("hi")
+        asyncio.run(fallback.generate_text("hi"))
     except ProviderAllFailedError as exc:
         assert exc.error_code == "provider_all_failed"
         assert len(exc.attempts) == 3
@@ -668,26 +669,26 @@ def test_fallback_does_not_re_advance_on_non_transient_runtime_error(monkeypatch
     LLMFactory = _reload_factory()
 
     class _PermanentFail(f.BaseProvider):
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             raise MalformedResponseError("could not parse response body")
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return self.generate_text(prompt, **_kw)
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     class _WouldSucceed(f.BaseProvider):
         calls = 0
 
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             _WouldSucceed.calls += 1
             return type("R", (), {"text": "ok", "model": self.model})()
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return self.generate_text(prompt, **_kw)
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     LLMFactory.register_provider("groq", _PermanentFail)
@@ -709,7 +710,7 @@ def test_fallback_does_not_re_advance_on_non_transient_runtime_error(monkeypatch
 
     fallback = LLMFactory.fallback("writer")
     try:
-        fallback.generate_text("hi")
+        asyncio.run(fallback.generate_text("hi"))
     except MalformedResponseError:
         # Expected: the permanent failure surfaces immediately, and the
         # secondary provider that WOULD have succeeded is never tried.
@@ -742,15 +743,15 @@ def test_fallback_uses_per_provider_model_env(monkeypatch):
             super().__init__(**kwargs)
             seen_models.append((self.provider_name, self.model))
 
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             if self.model == "groq-writer-model":
                 raise RateLimitError("429 from primary")
             return type("R", (), {"text": "ok", "model": self.model})()
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return self.generate_text(prompt, **_kw)
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     LLMFactory.register_provider("groq", _ModelProbe)
@@ -774,7 +775,7 @@ def test_fallback_uses_per_provider_model_env(monkeypatch):
     LLMFactory.register_provider("huggingface", _ModelProbe)
 
     fallback = LLMFactory.fallback("writer")
-    response = fallback.generate_text("hi")
+    response = asyncio.run(fallback.generate_text("hi"))
     assert response.text == "ok"
     # Each provider was instantiated with its own per-provider model.
     models_seen = sorted(m for _, m in seen_models)
@@ -816,23 +817,23 @@ def test_fallback_generate_json_uses_chain(monkeypatch):
     LLMFactory = _reload_factory()
 
     class _RateLimited(f.BaseProvider):
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             raise RateLimitError("429 from primary")
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             raise RateLimitError("429 from primary")
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     class _Ok(f.BaseProvider):
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             return type("R", (), {"text": "ok", "model": self.model})()
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return {"text": "ok", "model": self.model}
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     LLMFactory.register_provider("groq", _RateLimited)
@@ -856,7 +857,7 @@ def test_fallback_generate_json_uses_chain(monkeypatch):
     LLMFactory.register_provider("huggingface", _Ok)
 
     fallback = LLMFactory.fallback("writer")
-    result = fallback.generate_json("hi")
+    result = asyncio.run(fallback.generate_json("hi"))
     assert result == {"text": "ok", "model": "openrouter-writer-model"}
     assert fallback.provider_name == "openrouter"
 
@@ -872,23 +873,23 @@ def test_fallback_health_check_uses_chain(monkeypatch):
     LLMFactory = _reload_factory()
 
     class _Unhealthy(f.BaseProvider):
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             return type("R", (), {"text": "ok", "model": self.model})()
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return {"text": "ok"}
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return False
 
     class _Healthy(f.BaseProvider):
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             return type("R", (), {"text": "ok", "model": self.model})()
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return {"text": "ok"}
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     LLMFactory.register_provider("groq", _Unhealthy)
@@ -927,27 +928,27 @@ def test_fallback_isolates_request_state_across_calls(monkeypatch):
     call_count = {"groq": 0}
 
     class _FlakyGroq(f.BaseProvider):
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             call_count["groq"] += 1
             # First call: succeed. Subsequent calls: 429.
             if call_count["groq"] == 1:
                 return type("R", (), {"text": "ok", "model": self.model})()
             raise RateLimitError("429 on second call")
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return self.generate_text(prompt, **_kw)
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     class _Ok(f.BaseProvider):
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             return type("R", (), {"text": "ok", "model": self.model})()
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return {"text": "ok"}
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     LLMFactory.register_provider("groq", _FlakyGroq)
@@ -970,11 +971,11 @@ def test_fallback_isolates_request_state_across_calls(monkeypatch):
     fallback = LLMFactory.fallback("writer")
 
     # Call 1: Groq succeeds. After this, provider_name == "groq".
-    fallback.generate_text("first")
+    asyncio.run(fallback.generate_text("first"))
     assert fallback.provider_name == "groq"
 
     # Call 2: Groq 429s, OpenRouter succeeds.
-    fallback.generate_text("second")
+    asyncio.run(fallback.generate_text("second"))
     # Critical: provider_name must now reflect the openrouter success,
     # NOT the previous groq success.
     assert fallback.provider_name == "openrouter"
@@ -988,7 +989,7 @@ def test_fallback_isolates_request_state_across_calls(monkeypatch):
     # Bump groq counter so its generate_text raises 429 (it already does,
     # but the test reads cleaner if we make all 3 deterministic-fail).
     try:
-        fallback.generate_text("third")
+        asyncio.run(fallback.generate_text("third"))
     except ProviderAllFailedError:
         # After the failed call, the state must NOT say
         # fallback.provider_name == "openrouter" from the previous
@@ -1020,13 +1021,13 @@ def test_failed_provider_is_not_permanently_cached(monkeypatch):
             super().__init__(**kwargs)
             state["instances_built"] += 1
 
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             raise RateLimitError("429 from upstream")
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return self.generate_text(prompt, **_kw)
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     LLMFactory.register_provider("groq", _AlwaysRateLimited)
@@ -1052,7 +1053,7 @@ def test_failed_provider_is_not_permanently_cached(monkeypatch):
     # raised. Each provider was instantiated exactly once, and the
     # three instances were all evicted from the cache on failure.
     try:
-        fallback.generate_text("hi")
+        asyncio.run(fallback.generate_text("hi"))
     except ProviderAllFailedError:
         pass
     initial = state["instances_built"]
@@ -1067,7 +1068,7 @@ def test_failed_provider_is_not_permanently_cached(monkeypatch):
     # (the cache was empty), and again each must be evicted. This is
     # what proves a single 429 does not poison the cache forever.
     try:
-        fallback.generate_text("hi2")
+        asyncio.run(fallback.generate_text("hi2"))
     except ProviderAllFailedError:
         pass
     assert state["instances_built"] == initial + 3, (
@@ -1088,13 +1089,13 @@ def test_fallback_records_provider_name_and_model(monkeypatch):
     LLMFactory = _reload_factory()
 
     class _Ok(f.BaseProvider):
-        def generate_text(self, prompt, **_kw):
+        async def generate_text(self, prompt, **_kw):
             return type("R", (), {"text": "ok", "model": self.model})()
 
-        def generate_json(self, prompt, **_kw):
+        async def generate_json(self, prompt, **_kw):
             return self.generate_text(prompt, **_kw)
 
-        def health_check(self):
+        async def health_check(self):  # noqa: D401
             return True
 
     LLMFactory.register_provider("groq", _Ok)
@@ -1118,7 +1119,7 @@ def test_fallback_records_provider_name_and_model(monkeypatch):
     LLMFactory.register_provider("huggingface", _Ok)
 
     fallback = LLMFactory.fallback("writer")
-    fallback.generate_text("hi")
+    asyncio.run(fallback.generate_text("hi"))
     assert fallback.provider_name == "groq"
     # The model property reflects the placeholder written by the
     # parent's __init__ until the first successful call updates it

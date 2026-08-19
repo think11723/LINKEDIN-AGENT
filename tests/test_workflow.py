@@ -1,7 +1,8 @@
 """Tests for workflow execution."""
 
+import asyncio
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import AsyncMock, Mock, patch, MagicMock
 from workflows.content_workflow import ContentWorkflow
 from models.workflow_models import WorkflowResult
 
@@ -33,12 +34,9 @@ class TestContentWorkflow:
     def test_workflow_run_calls_graph_workflow(self, mock_graph):
         """Test workflow run delegates to graph workflow."""
         mock_instance = Mock()
-        mock_graph.return_value = mock_instance
-
-        # WorkflowResult requires every field even when the type
-        # annotation is Optional (Pydantic v2 strictness — see
-        # models/workflow_models.py). Supply them explicitly so the
-        # mock matches the production constructor.
+        # ``graph_workflow.run`` is async now (the underlying graph
+        # contains async nodes that await the LLM). Use AsyncMock
+        # so ``await mock_instance.run(...)`` works.
         expected_result = WorkflowResult(
             topic="test topic",
             final_post=None,
@@ -47,10 +45,11 @@ class TestContentWorkflow:
             review_feedback=None,
             review_scores=None,
         )
-        mock_instance.run.return_value = expected_result
+        mock_instance.run = AsyncMock(return_value=expected_result)
+        mock_graph.return_value = mock_instance
 
         workflow = ContentWorkflow()
-        result = workflow.run("test topic")
+        result = asyncio.run(workflow.run("test topic"))
 
         mock_instance.run.assert_called_once_with(
             "test topic", research_package=None
@@ -81,10 +80,12 @@ class TestContentWorkflow:
             review_scores=None,
             error="Test error",
         )
-        mock_instance.run.return_value = error_result
+        # ``graph_workflow.run`` is async; use AsyncMock so the
+        # ``await`` in ``ContentWorkflow.run`` works.
+        mock_instance.run = AsyncMock(return_value=error_result)
 
         workflow = ContentWorkflow()
-        result = workflow.run("test topic")
+        result = asyncio.run(workflow.run("test topic"))
 
         assert result.error == "Test error"
         assert result.approved is False

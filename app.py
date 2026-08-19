@@ -152,7 +152,12 @@ def regenerate_post(topic):
     console.print(f"\n[bold]Regenerating content for:[/bold] {topic}")
     
     workflow = ContentWorkflow()
-    result = workflow.run(topic)
+    # ``ContentWorkflow.run`` is async now (the underlying graph
+    # contains async nodes). The legacy CLI runs in a sync
+    # context; use ``asyncio.run`` at this outermost CLI
+    # boundary (not inside application/library code).
+    import asyncio
+    result = asyncio.run(workflow.run(topic))
     
     if result.error:
         console.print(f"[red]Error: {result.error}[/red]")

@@ -277,27 +277,31 @@ class ContentGraphWorkflow:
         logger.info(f"[STATE TRACE] After planner: approved={state.get('approved')}, review_exists={state.get('review') is not None}, draft_exists={state.get('draft') is not None}, error={state.get('error')}")
         return state
     
-    def _writer_node(self, state: GraphState) -> GraphState:
+    async def _writer_node(self, state: GraphState) -> GraphState:
         """Writer node.
-        
+
         Args:
             state: Current graph state.
-            
+
         Returns:
             Updated state with draft.
         """
         iteration = state["iteration"] + 1
         state["iteration"] = iteration
-        
+
         logger.info(f"Iteration {iteration}: Starting Writer Agent")
         logger.info(f"[STATE TRACE] Before writer: approved={state.get('approved')}, review_exists={state.get('review') is not None}, draft_exists={state.get('draft') is not None}, error={state.get('error')}")
-        
+
         try:
             # Get edit instruction if this is a retry
             edit_instruction = state["review"].feedback if iteration > 1 else None
-            
-            # Write the post
-            draft = self.writer.write(
+
+            # Write the post. ``WriterAgent.write`` is async because
+            # the underlying LLM is async (FallbackProvider walks the
+            # provider chain via ``await``). The node must therefore
+            # be async too so it can ``await`` the call. LangGraph
+            # invokes both sync and async nodes correctly.
+            draft = await self.writer.write(
                 topic=state["execution_plan"].topic,
                 intent=state["execution_plan"].intent,
                 user_prompt=state["execution_plan"].topic,
@@ -341,7 +345,7 @@ class ContentGraphWorkflow:
         logger.info(f"[STATE TRACE] After writer: approved={state.get('approved')}, review_exists={state.get('review') is not None}, draft_exists={state.get('draft') is not None}, error={state.get('error')}")
         return state
     
-    def _reviewer_node(self, state: GraphState) -> GraphState:
+    async def _reviewer_node(self, state: GraphState) -> GraphState:
         """Reviewer node.
         
         Args:
@@ -355,7 +359,9 @@ class ContentGraphWorkflow:
         logger.info(f"[STATE TRACE] Before reviewer: approved={state.get('approved')}, review_exists={state.get('review') is not None}, draft_exists={state.get('draft') is not None}, error={state.get('error')}")
         
         try:
-            review = self.reviewer.review(state["draft"], state["context"])
+            # ``ReviewerAgent.review`` is async (the underlying LLM
+            # is async); await it to actually execute the call.
+            review = await self.reviewer.review(state["draft"], state["context"])
             state["review"] = review
 
             # Phase 8A / P0-5: record the provider+model that produced the review.
@@ -537,7 +543,7 @@ class ContentGraphWorkflow:
         logger.info(f"Iteration {state['iteration']}: Review FAILED - Will rewrite (Decision: {decision if decision else 'N/A'}, Score: {state['review'].scores.overall}/10)")
         return "continue"
     
-    def run(
+    async def run(
         self,
         topic: str,
         *,
@@ -576,8 +582,13 @@ class ContentGraphWorkflow:
         }
         
         try:
-            # Execute the graph
-            final_state = self.graph.invoke(initial_state)
+            # Execute the graph. ``ainvoke`` is required because the
+            # graph now contains async node functions (Writer and
+            # Reviewer are ``async def`` since the LLM contract is
+            # async). ``invoke`` (sync) cannot execute async nodes in
+            # LangGraph 0.2.45; it raises
+            # "No synchronous function provided to 'writer'".
+            final_state = await self.graph.ainvoke(initial_state)
             
             # Build result
             result = WorkflowResult(

@@ -128,8 +128,8 @@ class FallbackProvider(BaseProvider):
             )
         )
 
-    def _walk(self, method_name: str, *args: Any, **kwargs: Any) -> Any:
-        """Call ``method_name`` on each provider in priority order.
+    async def _walk(self, method_name: str, *args: Any, **kwargs: Any) -> Any:
+        """Call ``method_name`` on each provider in priority order (async).
 
         Resets ``_last_provider_name`` and ``_last_model`` at entry so a
         request that starts and fails (or never reaches a provider) does
@@ -189,7 +189,7 @@ class FallbackProvider(BaseProvider):
 
             try:
                 method = getattr(instance, method_name)
-                response = method(*args, **kwargs)
+                response = await method(*args, **kwargs)
             except Exception as e:
                 last_error = e
                 self._record_attempt(
@@ -247,11 +247,11 @@ class FallbackProvider(BaseProvider):
         )
         raise ProviderAllFailedError(self._agent, attempts)
 
-    def generate_text(self, prompt: str, **kwargs: Any) -> LLMResponse:
-        return self._walk("generate_text", prompt, **kwargs)
+    async def generate_text(self, prompt: str, **kwargs: Any) -> LLMResponse:
+        return await self._walk("generate_text", prompt, **kwargs)
 
-    def generate_json(self, prompt: str, **kwargs: Any) -> Dict[str, Any]:
-        return self._walk("generate_json", prompt, **kwargs)
+    async def generate_json(self, prompt: str, **kwargs: Any) -> Dict[str, Any]:
+        return await self._walk("generate_json", prompt, **kwargs)
 
     def health_check(self) -> bool:
         """True if at least one provider in the priority list is healthy."""

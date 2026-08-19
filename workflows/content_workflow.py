@@ -39,7 +39,7 @@ class ContentWorkflow:
         self.writer = WriterAgent()
         self.reviewer = ReviewerAgent()
     
-    def run(
+    async def run(
         self,
         topic: str,
         *,
@@ -59,7 +59,9 @@ class ContentWorkflow:
         Returns:
             WorkflowResult containing the final post, approval status, and metadata.
         """
-        # Use LangGraph workflow
-        return self.graph_workflow.run(
+        # Use LangGraph workflow. ``graph_workflow.run`` is async
+        # because the underlying graph contains async node functions
+        # (Writer and Reviewer await the LLM); ``await`` it here.
+        return await self.graph_workflow.run(
             topic, research_package=research_package
         )

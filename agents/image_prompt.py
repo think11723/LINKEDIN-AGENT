@@ -118,7 +118,7 @@ Suitable for LinkedIn.
 
 High resolution."""
     
-    def generate(self, post: LinkedInPost) -> ImagePrompt:
+    async def generate(self, post: LinkedInPost) -> ImagePrompt:
         """Generate an image prompt based on the LinkedIn post.
         
         Args:
@@ -131,7 +131,7 @@ High resolution."""
         style = self._determine_style(post.title, post.content)
         
         # Generate prompt
-        prompt = self._generate_prompt(post, style)
+        prompt = await self._generate_prompt(post, style)
         
         # Generate filename
         filename = self._generate_filename(post.title)
@@ -177,7 +177,7 @@ High resolution."""
         # Default
         return "clean modern illustration with professional color palette"
     
-    def _generate_prompt(self, post: LinkedInPost, style: str) -> str:
+    async def _generate_prompt(self, post: LinkedInPost, style: str) -> str:
         """Generate the detailed image prompt using LLM.
         
         Args:
@@ -202,7 +202,12 @@ The prompt must include:
 
 Make the prompt detailed and specific for high-quality image generation."""
         
-        response = self.llm.generate_text(user_prompt, temperature=0.5)
+        # The LLM is async (FallbackProvider walks the chain via
+        # ``await``). Awaiting it actually executes the call;
+        # without ``await`` we'd get a coroutine and the next
+        # line (``response.text``) would raise "'coroutine' object
+        # has no attribute 'text'".
+        response = await self.llm.generate_text(user_prompt, temperature=0.5)
         
         return self._parse_response(response.text, style)
     

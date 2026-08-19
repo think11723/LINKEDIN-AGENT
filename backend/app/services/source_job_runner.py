@@ -368,7 +368,13 @@ class SourceJobRunner:
 
         service = WorkflowService()
         try:
-            workflow_result = service.generate_content(
+            # ``WorkflowService.generate_content`` is async (the
+            # LangGraph it runs contains async Writer/Reviewer nodes
+            # that await the LLM). ``await`` is required; without
+            # it, ``workflow_result`` is a coroutine and the next
+            # access would raise "'coroutine' object has no
+            # attribute 'final_post'".
+            workflow_result = await service.generate_content(
                 request, research_package=research_package
             )
         except Exception as exc:  # noqa: BLE001

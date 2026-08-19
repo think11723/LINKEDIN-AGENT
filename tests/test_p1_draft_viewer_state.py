@@ -40,7 +40,7 @@ def test_draft_metadata_is_returned_after_generation(client_a, monkeypatch):
     )
     from backend.app.services import workflow_service
 
-    def fake_run(_self, _payload):
+    def fake_run(_payload):
         return GenerateContentResponse(
             topic="t",
             final_post=LinkedInPostPayload(
@@ -56,7 +56,13 @@ def test_draft_metadata_is_returned_after_generation(client_a, monkeypatch):
             },
         )
 
-    monkeypatch.setattr(workflow_service.WorkflowService, "generate_content", fake_run)
+    # ``generate_content`` is now async; the FastAPI endpoint
+    # does ``await service.generate_content(payload)``. The mock
+    # must return an awaitable. Wrap the sync return in an async
+    # coroutine.
+    async def async_generate_content(self, payload):
+        return fake_run(payload)
+    monkeypatch.setattr(workflow_service.WorkflowService, "generate_content", async_generate_content)
 
     response = client_a.post("/api/v1/content/generate", json={"topic": "t"})
     assert response.status_code == 200

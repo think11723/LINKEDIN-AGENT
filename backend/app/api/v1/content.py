@@ -82,7 +82,11 @@ async def generate_content(
     uncaught exception — never ``str(exc)``.
     """
     # WorkflowService raises HTTPException for empty topics; re-raise.
-    workflow_result = service.generate_content(payload)
+    # ``WorkflowService.generate_content`` is async because the
+    # LangGraph it runs contains async nodes (Writer and Reviewer
+    # await the LLM). The FastAPI handler is already async, so
+    # ``await`` is safe and natural.
+    workflow_result = await service.generate_content(payload)
 
     response = workflow_result
     try:

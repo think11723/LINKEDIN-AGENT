@@ -182,7 +182,7 @@ def display_summary(
     console.print("\n")
 
 
-def run_workflow(user_prompt: str) -> None:
+async def run_workflow(user_prompt: str) -> None:
     """Run the complete LinkedIn content creation workflow.
     
     Args:
@@ -217,7 +217,7 @@ def run_workflow(user_prompt: str) -> None:
         # Step 4: Writing
         display_status("Writing...")
         writer = WriterAgent()
-        post = writer.write(
+        post = await writer.write(
             topic=execution_context["topic"],
             intent=execution_context["intent"],
             user_prompt=execution_context["user_prompt"],
@@ -234,7 +234,7 @@ def run_workflow(user_prompt: str) -> None:
         # Step 6: Image Prompt Generation
         display_status("Generating image prompt...")
         image_prompt_agent = ImagePromptAgent()
-        image_prompt = image_prompt_agent.generate(review_result.final_post)
+        image_prompt = await image_prompt_agent.generate(review_result.final_post)
         print_image_prompt(image_prompt)
         
         # Step 7: Image Generation
@@ -272,7 +272,7 @@ def run_workflow(user_prompt: str) -> None:
                 # Step 4: Writing with edit instruction
                 display_status("Editing...")
                 writer = WriterAgent()
-                post = writer.write(
+                post = await writer.write(
                     topic=execution_context["topic"],
                     intent=execution_context["intent"],
                     user_prompt=execution_context["user_prompt"],
@@ -280,17 +280,17 @@ def run_workflow(user_prompt: str) -> None:
                     writing_style=execution_context["writing_style"],
                     edit_instruction=edit_instruction
                 )
-                
+
                 # Step 5: Reviewing
                 display_status("Reviewing...")
                 reviewer = ReviewerAgent()
-                review_result = reviewer.review(post)
+                review_result = await reviewer.review(post)
                 print_review_result(review_result)
                 
                 # Step 6: Image Prompt Generation
                 display_status("Generating new image prompt...")
                 image_prompt_agent = ImagePromptAgent()
-                image_prompt = image_prompt_agent.generate(review_result.final_post)
+                image_prompt = await image_prompt_agent.generate(review_result.final_post)
                 print_image_prompt(image_prompt)
                 
                 # Step 7: Image Generation
@@ -337,7 +337,7 @@ def main() -> None:
     
     # Run the workflow
     try:
-        run_workflow(user_prompt)
+        asyncio.run(run_workflow(user_prompt))
     except KeyboardInterrupt:
         console.print("\n[yellow]⚠[/yellow] [dim]Interrupted by user.[/dim]\n")
     except Exception as e:

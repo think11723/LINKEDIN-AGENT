@@ -149,7 +149,7 @@ If any validation fails, automatically rewrite the post before returning it."""
 
         self.system_prompt = system_prompt
     
-    def write(
+    async def write(
         self,
         topic: str,
         intent: str,
@@ -198,7 +198,12 @@ If any validation fails, automatically rewrite the post before returning it."""
         
         # Generate content
         logger.info("===== Writer: Sending request to LLM =====")
-        response = self.llm.generate_text(prompt, temperature=0.7)
+        # The LLM is async (FallbackProvider.generate_text is a
+        # coroutine that walks the provider chain). Awaiting it
+        # actually executes the call; without ``await`` we'd get a
+        # coroutine object and the next line (``response.text``)
+        # would fail with "'coroutine' object has no attribute 'text'".
+        response = await self.llm.generate_text(prompt, temperature=0.7)
         logger.info("===== Writer: Response received =====")
         
         # Parse response
