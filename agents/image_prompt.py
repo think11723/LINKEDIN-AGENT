@@ -31,7 +31,10 @@ class ImagePromptAgent:
     
     def __init__(self) -> None:
         """Initialize the Image Prompt Agent."""
-        self.llm = LLMFactory.get("writer")  # Use writer model for image prompts
+        # Phase 8E: prefer LLMFactory.fallback() so a runtime 429 / 404 /
+        # 401 / 5xx on the first provider in the priority list
+        # automatically cascades to the secondary and tertiary providers.
+        self.llm = LLMFactory.fallback("writer")  # Use writer model for image prompts
         self._setup_prompt()
     
     def _setup_prompt(self) -> None:

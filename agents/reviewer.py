@@ -71,7 +71,10 @@ class ReviewerAgent:
     
     def __init__(self) -> None:
         """Initialize the Reviewer Agent."""
-        self.llm = LLMFactory.get("reviewer")
+        # Phase 8E: prefer LLMFactory.fallback() so a runtime 429 / 404 /
+        # 401 / 5xx on the first provider in the priority list
+        # automatically cascades to the secondary and tertiary providers.
+        self.llm = LLMFactory.fallback("reviewer")
         self._setup_prompts()
 
     def provider_info(self) -> dict[str, str]:

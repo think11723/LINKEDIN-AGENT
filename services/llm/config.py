@@ -122,33 +122,93 @@ class LLMConfig:
         return cls.DEFAULT_TIMEOUT
     
     @classmethod
-    def is_transient_error(cls, error: Exception) -> bool:
-        """Check if an error is transient (should trigger fallback).
-        
+    def is_fallback_eligible_error(cls, error: Exception) -> bool:
+        """Check if the error means the next provider in the priority
+        list should be tried.
+
         Args:
-            error: Exception to check
-            
+            error: Exception to check.
+
         Returns:
-            True if error is transient, False otherwise
+            True if the FallbackProvider should advance to the next
+            provider, False if the same error would be reproduced on
+            every provider (and the caller should surface it
+            immediately).
+
+        Notes:
+            This is the **fallback** predicate, not the **retry**
+            predicate. The two answer different questions:
+
+            * Retry (see :py:meth:`BaseProvider._is_retryable_error`) —
+              "would the same provider succeed if we tried again
+              right now?" True only for transient errors
+              (rate limit, timeout, network).
+
+            * Fallback (this method) — "would a *different* provider
+              plausibly succeed?" True for transient errors AND for
+              provider-specific errors (model not on this provider,
+              auth on this provider, schema unsupported here).
+
+            Concretely:
+
+            * 429 / 5xx / 503 / 502 / 504 / 408 — primary degraded;
+              try secondary.
+            * timeout / network / connection / unavailable — primary
+              unreachable; try secondary.
+            * 404 / "not found" / "model not found" — model absent on
+              primary; the next provider may have it.
+            * "unsupported" / "endpoint" — schema unsupported here;
+              another provider may support it.
+            * 401 / 403 / unauthorized / forbidden / "invalid api
+              key" / credentials — auth error on this provider; the
+              next provider has a different key.
+
+            A permanent error (e.g. an obviously-malformed user prompt
+            that the provider rejects with a 4xx that is not in the
+            list above) is NOT fallback-eligible. It would reproduce
+            on every provider, so the FallbackProvider surfaces it
+            immediately. The whole chain is only tried for errors that
+            the next provider might actually handle differently.
         """
         error_str = str(error).lower()
-        
-        # Transient errors (should fallback)
-        transient_patterns = [
+
+        fallback_patterns = [
+            # Transient + fallback-eligible.
             "timeout",
             "rate limit",
             "429",
             "503",
             "502",
             "504",
+            "501",
+            "500",
+            "408",
             "connection",
             "network",
             "unavailable",
             "temporary",
+            # Not transient, but fallback-eligible: model absence /
+            # schema mismatch / endpoint unsupported on this provider.
+            "not found",
+            "404",
+            "unsupported",
+            "endpoint",
+            # Not transient, but fallback-eligible: the next provider
+            # has a different API key.
+            "401",
+            "403",
+            "unauthorized",
+            "forbidden",
+            "invalid api key",
+            "credentials",
         ]
-        
-        for pattern in transient_patterns:
+
+        for pattern in fallback_patterns:
             if pattern in error_str:
                 return True
-        
+
         return False
+
+    # Backwards-compatible alias for code that still references the
+    # original name. New code should use is_fallback_eligible_error.
+    is_transient_error = is_fallback_eligible_error

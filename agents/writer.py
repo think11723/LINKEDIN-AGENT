@@ -27,7 +27,10 @@ class WriterAgent:
     
     def __init__(self) -> None:
         """Initialize the Writer Agent."""
-        self.llm = LLMFactory.get("writer")
+        # Phase 8E: prefer LLMFactory.fallback() so a runtime 429 / 404 /
+        # 401 / 5xx on the first provider in the priority list
+        # automatically cascades to the secondary and tertiary providers.
+        self.llm = LLMFactory.fallback("writer")
         self._setup_prompt()
 
     def provider_info(self) -> dict[str, str]:

@@ -1,8 +1,8 @@
 """Base provider interface for LLM providers."""
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, Callable
-from dataclasses import dataclass
+from typing import Dict, Any, List, Optional, Callable
+from dataclasses import dataclass, field
 import time
 import random
 
@@ -50,6 +50,70 @@ class UnsupportedModelError(ProviderError):
 class ProviderUnavailableError(ProviderError):
     """Exception raised when provider is unavailable."""
     pass
+
+
+@dataclass
+class ProviderAttempt:
+    """One provider's attempt in a FallbackProvider chain.
+
+    Carries only non-secret information suitable for logs and the
+    structured error envelope that reaches the workflow. The
+    exception text is trimmed to a single line and any bearer token
+    is stripped.
+    """
+
+    provider: str
+    model: str
+    error_type: str          # e.g. "RateLimitError", "InvalidModelError", "MissingAPIKeyError"
+    error_message: str       # safe, single-line
+    fallback_eligible: bool  # whether the FallbackProvider's predicate would have cascaded
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "provider": self.provider,
+            "model": self.model,
+            "error_type": self.error_type,
+            "error_message": self.error_message,
+            "fallback_eligible": self.fallback_eligible,
+        }
+
+
+class ProviderAllFailedError(ProviderError):
+    """Raised by :class:`FallbackProvider` when every provider in the
+    configured priority list failed.
+
+    Subclasses :class:`ProviderError` so the existing exception
+    architecture (LangGraph node → ``state["error"]`` →
+    :class:`WorkflowResult` → FastAPI ``HTTPException``) keeps working
+    unchanged. The structured ``attempts`` and ``error_code`` fields
+    are added for the workflow / frontend to consume without parsing
+    the message string.
+
+    Attributes:
+        agent: The agent name (planner / writer / reviewer / research).
+        attempts: A list of :class:`ProviderAttempt` describing every
+            provider that was tried, in order.
+    """
+
+    def __init__(self, agent: str, attempts: List[ProviderAttempt]) -> None:
+        self.agent = agent
+        self.attempts = list(attempts)
+        self.error_code = "provider_all_failed"
+        # Human-readable summary suitable for log lines and the legacy
+        # ``state["error"]`` field. Never includes API keys.
+        summary = "; ".join(
+            f"{a.provider}={a.model}:{a.error_type}" for a in self.attempts
+        )
+        super().__init__(
+            f"All LLM providers failed for agent {agent!r}: {summary}"
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "error_code": self.error_code,
+            "agent": self.agent,
+            "attempted_providers": [a.to_dict() for a in self.attempts],
+        }
 
 
 @dataclass
