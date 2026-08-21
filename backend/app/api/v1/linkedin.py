@@ -12,9 +12,10 @@ from __future__ import annotations
 import base64
 import hashlib
 import logging
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -80,6 +81,30 @@ def _resolve_linkedin_settings(settings: Settings) -> tuple[str, str, str]:
         settings.linkedin_client_secret,
         settings.linkedin_redirect_uri,
     )
+
+
+# OAuth error codes are short ASCII identifiers (RFC 6749 §5.2 + LinkedIn
+# extensions). Restrict to that character set and cap the length so a
+# hostile or buggy error payload cannot smuggle newlines, secrets, or
+# log-injection content into audit rows or the redirect query string.
+_OAUTH_ERROR_TOKEN_RE = re.compile(r"[^A-Za-z0-9_\-.]")
+
+
+def _sanitize_oauth_error_token(value: str) -> Optional[str]:
+    cleaned = _OAUTH_ERROR_TOKEN_RE.sub("", value).strip().strip(".")
+    if not cleaned:
+        return None
+    return cleaned[:64] or None
+
+
+_OAUTH_ERROR_TEXT_RE = re.compile(r"[^A-Za-z0-9 _\-.,:/()@?=&%+#]")
+
+
+def _sanitize_oauth_error_text(value: str) -> Optional[str]:
+    cleaned = _OAUTH_ERROR_TEXT_RE.sub("", value).strip()
+    if not cleaned:
+        return None
+    return cleaned[:200] or None
 
 
 def _build_authorize_url(
@@ -216,13 +241,52 @@ async def callback(
         return _redirect("linkedin=error&reason=request_error")
 
     if token_response.status_code != 200:
+        # P0-8 hygiene: capture only the OAuth-standard error fields
+        # (error / error_description / error_uri) from LinkedIn's response
+        # body. Never log the request body, the Authorization header,
+        # the code, the PKCE verifier, or any token.
+        oauth_error: Optional[str] = None
+        oauth_error_description: Optional[str] = None
+        oauth_error_uri: Optional[str] = None
+        try:
+            error_payload = token_response.json()
+            if isinstance(error_payload, dict):
+                raw_error = error_payload.get("error")
+                raw_error_description = error_payload.get("error_description")
+                raw_error_uri = error_payload.get("error_uri")
+                if isinstance(raw_error, str):
+                    oauth_error = _sanitize_oauth_error_token(raw_error)
+                if isinstance(raw_error_description, str):
+                    oauth_error_description = _sanitize_oauth_error_text(
+                        raw_error_description
+                    )
+                if isinstance(raw_error_uri, str):
+                    oauth_error_uri = _sanitize_oauth_error_text(raw_error_uri)
+        except Exception:  # noqa: BLE001
+            # LinkedIn sometimes returns a non-JSON error body. Fall
+            # through with None values; the audit log still records
+            # the HTTP status code.
+            pass
+
+        audit_details: dict[str, Any] = {"status": token_response.status_code}
+        if oauth_error is not None:
+            audit_details["error"] = oauth_error
+        if oauth_error_description is not None:
+            audit_details["error_description"] = oauth_error_description
+        if oauth_error_uri is not None:
+            audit_details["error_uri"] = oauth_error_uri
+
         await audit.log(
             user_id=user_id,
             event_type="LINKEDIN_CONNECT_FAILED",
             description="LinkedIn token exchange failed",
-            details={"status": token_response.status_code},
+            details=audit_details,
         )
-        return _redirect("linkedin=error&reason=token_exchange")
+
+        redirect_query = "linkedin=error&reason=token_exchange"
+        if oauth_error is not None:
+            redirect_query += f"&detail={quote(oauth_error, safe='')}"
+        return _redirect(redirect_query)
 
     token_payload = token_response.json()
     access_token = token_payload.get("access_token")

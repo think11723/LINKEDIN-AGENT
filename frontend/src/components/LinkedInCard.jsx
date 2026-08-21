@@ -47,13 +47,15 @@ export function LinkedInCard() {
       toast.success('LinkedIn connected.');
     } else if (flag === 'error') {
       const reason = params.get('reason') || 'unknown';
-      toast.error('LinkedIn connection failed.', reason);
+      const detail = params.get('detail');
+      toast.error('LinkedIn connection failed.', detail ? `${reason} (${detail})` : reason);
     }
     // Clean the flag from the URL.
     if (flag) {
       const url = new URL(window.location.href);
       url.searchParams.delete('linkedin');
       url.searchParams.delete('reason');
+      url.searchParams.delete('detail');
       window.history.replaceState({}, '', url.toString());
     }
   }, []);
