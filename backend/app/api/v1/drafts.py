@@ -168,8 +168,21 @@ async def create_draft(
     audit: AuditRepository = Depends(get_audit_repository),
 ) -> DraftResponse:
     draft_id = uuid.uuid4().hex
-    title = payload.title or payload.topic
-    content = payload.content or ""
+    # Phase 9: normalize before persisting so any code path
+    # (manual create, URL-mode generation, future agents) produces the
+    # same canonical LinkedIn-native content. Writer and Reviewer also
+    # normalize — this is the final defense layer for ALL paths.
+    from utils.linkedin_content import normalize_linkedin_post
+
+    _normalized = normalize_linkedin_post(
+        title=payload.title or payload.topic,
+        content=payload.content or "",
+        hashtags=payload.hashtags,
+    )
+    title = _normalized.title
+    content = _normalized.content
+    hashtags = list(_normalized.hashtags)
+
     approval = await approvals.create(user_id=user.uid, draft_id=draft_id)
     doc = await drafts.create(
         user_id=user.uid,
@@ -177,7 +190,7 @@ async def create_draft(
         topic=payload.topic,
         title=title,
         content=content,
-        hashtags=payload.hashtags,
+        hashtags=hashtags,
         image_path=payload.image_path,
         review_score=payload.review_score,
         review_feedback=payload.review_feedback,
@@ -214,6 +227,28 @@ async def update_draft(
     updates = payload.model_dump(exclude_unset=True)
     if not updates:
         return _to_response(existing)
+
+    # Phase 9: normalize manually-edited title / content / hashtags
+    # through the same canonical LinkedIn normalizer so users can't
+    # accidentally paste Markdown into a draft and have it persist
+    # verbatim. The normalizer is idempotent + safe on plain text.
+    from utils.linkedin_content import normalize_linkedin_post
+
+    if any(field in updates for field in ("title", "content", "hashtags")):
+        from utils.linkedin_content import (
+            normalize_title as _normalize_title,
+            normalize_content as _normalize_content,
+            normalize_hashtags as _normalize_hashtags,
+        )
+
+        _merged_title = updates.get("title", existing.get("title"))
+        _merged_content = updates.get("content", existing.get("content"))
+        _merged_hashtags = updates.get("hashtags", existing.get("hashtags"))
+        updates["title"] = _normalize_title(_merged_title or "")
+        updates["content"] = _normalize_content(_merged_content or "")
+        updates["hashtags"] = list(
+            _normalize_hashtags(_merged_hashtags or [])
+        )
 
     doc = await drafts.update(user.uid, draft_id, updates)
     if not doc:

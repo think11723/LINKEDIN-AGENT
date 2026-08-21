@@ -12,6 +12,7 @@ from models.models import LinkedInPost
 from models.context_models import Context
 from config.config import config
 from utils.parsers import create_linkedin_post
+from utils.linkedin_content import normalize_linkedin_post
 from services.llm import LLMFactory
 
 
@@ -92,16 +93,42 @@ class ReviewerAgent:
         self.review_prompt = """You are an expert editor for LinkedIn content with deep expertise in professional communication.
 Review the following LinkedIn post and provide a comprehensive evaluation.
 
+THE OUTPUT MUST BE LINKEDIN-NATIVE PLAIN TEXT.
+LinkedIn does NOT render any Markdown syntax. The improved post must NEVER contain:
+- ## ### headings
+- **bold** / __bold__ emphasis
+- *italic* / _italic_ emphasis
+- `inline code` backticks or ```code fences```
+- Markdown tables (| --- |)
+- [text](url) Markdown links (write the URL inline if needed)
+- ___ / *** horizontal rules
+- A "Hashtags:" footer label
+- Article / document structure (numbered sections, conclusions, intro/body/conclusion layout)
+- Leading-hyphen Markdown list items
+
+The improved post must use LinkedIn-native formatting:
+- Short paragraphs (1-3 lines max each), blank lines between paragraphs
+- Emojis sparingly (max 2-3 per post total)
+- Bullets rendered as "→ item" or "• item"
+- Hashtags at the end WITHOUT a preceding label
+
 EVALUATION DIMENSIONS (score 1-10 with explanation):
 
-1. Hook Strength: Does the opening grab attention? Is it compelling?
-2. Readability: Is it easy to read? Are paragraphs short and clear?
+1. Hook Strength: Does the opening grab attention? Is it compelling? Does it avoid clickbait?
+2. Readability: Is it easy to read? Are paragraphs short and clear? Is whitespace good for mobile?
 3. Logical Flow: Do ideas transition naturally? Is there a clear structure?
 4. Professional Tone: Is the tone appropriate for LinkedIn? Not too casual or formal?
 5. Educational Value: Does it provide practical insights or learning?
 6. Credibility: Does it sound authentic? Avoids exaggeration and clickbait?
-7. Call-to-Action Quality: Is there a clear, relevant CTA?
+7. Call-to-Action Quality: Is there a clear, relevant CTA? Avoids generic "Follow for more."
 8. Hashtag Relevance: Are hashtags appropriate and not excessive?
+9. Markdown Contamination: Is the post free of ##, **, *, _, `, |, ---? (CRITICAL — these render as raw garbage on LinkedIn)
+10. Emoji Quality: Are emojis used purposefully for emphasis? (Penalize emoji-spam that looks like a teenager's first LinkedIn post)
+11. Paragraph Length: Is each paragraph 1-3 lines max? (LinkedIn users read on mobile.)
+12. Visual Structure: Is there blank-line separation between paragraphs, bullets, and the hashtag block?
+13. CTA Quality: Is there a real, specific call-to-action that invites engagement?
+14. Hashtag Quality: Are the hashtags specific to the topic (not generic filler like #motivation #success)?
+15. AI-Like / Generic Writing: Does it sound like a real practitioner, or like a ChatGPT template?
 
 LEGACY SCORES (1-10):
 - Clarity: How clear and understandable is the message?
@@ -138,6 +165,11 @@ EDUCATIONAL_VALUE: [score] | [explanation]
 CREDIBILITY: [score] | [explanation]
 CTA_QUALITY: [score] | [explanation]
 HASHTAG_RELEVANCE: [score] | [explanation]
+MARKDOWN_CONTAMINATION: [score] | [explanation]
+EMOJI_QUALITY: [score] | [explanation]
+PARAGRAPH_LENGTH: [score] | [explanation]
+VISUAL_STRUCTURE: [score] | [explanation]
+AI_LIKE_WRITING: [score] | [explanation]
 
 CLARITY: [score]
 ENGAGEMENT: [score]
@@ -156,18 +188,39 @@ FEEDBACK: [2-3 sentence summary feedback]"""
         self.improve_prompt = """You are an expert editor for LinkedIn content.
 Improve the following LinkedIn post while preserving the original meaning and intent.
 
+THE OUTPUT MUST BE LINKEDIN-NATIVE PLAIN TEXT. The improved post must NEVER contain any of:
+- ## ### #### headings
+- **bold** or __bold__ emphasis
+- *italic* or _italic_ emphasis
+- `inline code` backticks or ```code fences```
+- Markdown tables with | --- |
+- [text](url) Markdown links (write the URL inline if needed)
+- ___ or *** horizontal rules
+- A "Hashtags:" footer label
+- Article / document-style structure (numbered sections, intro / body / conclusion)
+
+Use LinkedIn-native formatting:
+- Short paragraphs (1-3 lines max) separated by blank lines
+- Emojis sparingly (max 2-3 per post total) for emphasis
+- Bullets rendered as "→ item" or "• item"
+- Hashtags at the end WITHOUT a preceding label
+
 Focus on:
 - Better clarity and flow
 - More engaging language (without being clickbait)
 - Authentic tone
 - Professional yet conversational style
 - Stronger call-to-action if needed
+- Removing any leftover Markdown formatting
+- Better paragraph spacing
 
 Do NOT:
 - Change the core message
 - Add excessive emojis
 - Make it sound like marketing copy
 - Exaggerate or hype
+- Use a rigid template — preserve stylistic freedom
+- Add a "Hashtags:" label before the hashtag list
 
 ORIGINAL POST:
 TITLE: {title}
@@ -381,15 +434,27 @@ HASHTAGS: [improved hashtags]"""
     
     def _parse_improve_response(self, response: str, original_post: LinkedInPost) -> LinkedInPost:
         """Parse the improved post response from LLM.
-        
+
         Args:
             response: Raw response from LLM.
             original_post: Original post for fallback values.
-            
+
         Returns:
             Improved LinkedInPost.
         """
-        return create_linkedin_post(response, original_post, original_post.title)
+        # Run the parser first to extract TITLE/CONTENT/HASHTAGS, then
+        # run the canonical LinkedIn normalizer so residual Markdown
+        # markers and "Hashtags: ..." leakage are removed from the
+        # Reviewer's improved output too. Same pipeline as the Writer
+        # — Draft Viewer and Publisher consume only the normalized form.
+        parsed = create_linkedin_post(
+            response, original_post, original_post.title
+        )
+        return normalize_linkedin_post(
+            title=parsed.title,
+            content=parsed.content,
+            hashtags=parsed.hashtags,
+        )
 
 
 def print_review_result(result: ReviewResult) -> None:

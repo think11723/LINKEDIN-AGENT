@@ -301,6 +301,25 @@ async def edit_draft(
     if not updates:
         return ApprovalActionResponse(success=True, message="No changes")
 
+    # Phase 9: normalize approval-edit input through the canonical
+    # LinkedIn normalizer so a user who pastes Markdown into a draft
+    # edit still ends up with a LinkedIn-native stored draft. Same
+    # canonical function as Writer + Reviewer + persist.
+    if any(field in updates for field in ("title", "content", "hashtags")):
+        from utils.linkedin_content import (
+            normalize_title as _normalize_title,
+            normalize_content as _normalize_content,
+            normalize_hashtags as _normalize_hashtags,
+        )
+        if "title" in updates:
+            updates["title"] = _normalize_title(updates["title"] or "")
+        if "content" in updates:
+            updates["content"] = _normalize_content(updates["content"] or "")
+        if "hashtags" in updates:
+            updates["hashtags"] = list(
+                _normalize_hashtags(updates["hashtags"] or [])
+            )
+
     doc = await drafts.update(user.uid, payload.draft_id, updates)
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")

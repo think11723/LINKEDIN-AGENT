@@ -319,9 +319,23 @@ async def _persist_result(
     draft_id = uuid.uuid4().hex
     approval = await approvals.create(user_id=user.uid, draft_id=draft_id)
 
-    title = workflow_result.final_post.title or workflow_result.topic
-    content = workflow_result.final_post.content or ""
-    hashtags = workflow_result.final_post.hashtags or []
+    # Phase 9: normalize the post through the canonical LinkedIn content
+    # normalizer. This is the FINAL defense layer — the Writer and
+    # Reviewer also normalize, but if any path bypasses them (a future
+    # agent, a fallback provider, a manual edit via the approval
+    # endpoint) we still persist LinkedIn-native content. The Draft
+    # Viewer, approval email, and LinkedIn publishing all consume the
+    # normalized fields directly with no further cleanup.
+    from utils.linkedin_content import normalize_linkedin_post
+
+    _normalized = normalize_linkedin_post(
+        title=workflow_result.final_post.title or workflow_result.topic,
+        content=workflow_result.final_post.content or "",
+        hashtags=workflow_result.final_post.hashtags or [],
+    )
+    title = _normalized.title
+    content = _normalized.content
+    hashtags = list(_normalized.hashtags)
 
     review_score = None
     review_feedback = None
