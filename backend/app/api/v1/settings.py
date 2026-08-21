@@ -132,6 +132,21 @@ async def update_settings(
     _validate_timezone(updates.get("timezone"))
     _validate_email(updates.get("notification_email"))
 
+    # Cross-field rule: approval_mode == "email" requires a
+    # notification_email. Without this, the email pipeline silently
+    # short-circuits with reason="notification_email_not_set".
+    # Surface the error at the save boundary instead.
+    if updates.get("approval_mode") == "email":
+        notif = updates.get("notification_email")
+        if not notif or not str(notif).strip():
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "notification_email is required when "
+                    "approval_mode == 'email'"
+                ),
+            )
+
     try:
         payload_validated = UserSettingsUpdateRequest.model_validate(updates)
     except ValidationError as exc:

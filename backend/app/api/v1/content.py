@@ -461,7 +461,23 @@ async def _maybe_send_approval_email(
     user_doc = await users.get_preferences(user_id) or {}
     prefs = user_doc.get("preferences") or {}
 
+    # IMPORTANT: every skip path writes an APPROVAL_EMAIL_SKIPPED
+    # audit event so the operator has diagnostic visibility. The
+    # previous implementation silently returned when preferences were
+    # missing or approval_mode was not 'email', leaving the user with
+    # no observable reason for the missing email.
     if prefs.get("approval_mode") != "email":
+        await audit.log(
+            user_id=user_id,
+            event_type="APPROVAL_EMAIL_SKIPPED",
+            description=draft_title,
+            details={
+                "reason": "approval_mode_not_email",
+                "approval_mode": prefs.get("approval_mode"),
+                "preferences_present": bool(prefs),
+                "draft_id": draft_id,
+            },
+        )
         return
 
     to_address = prefs.get("notification_email")
@@ -470,7 +486,10 @@ async def _maybe_send_approval_email(
             user_id=user_id,
             event_type="APPROVAL_EMAIL_SKIPPED",
             description=draft_title,
-            details={"reason": "notification_email_not_set"},
+            details={
+                "reason": "notification_email_not_set",
+                "draft_id": draft_id,
+            },
         )
         return
 

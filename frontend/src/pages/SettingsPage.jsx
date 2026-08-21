@@ -81,6 +81,19 @@ export default function SettingsPage() {
   }
 
   async function handleSave() {
+    // Frontend validation: prevent saving email-mode without a
+    // notification email — backend will reject it, but rejecting at
+    // the UI is friendlier.
+    if (
+      form.approval_mode === 'email'
+      && (!form.notification_email || !form.notification_email.trim())
+    ) {
+      toast.error(
+        'Notification email required',
+        'Please enter a notification email for Email approval mode.',
+      );
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -151,6 +164,11 @@ export default function SettingsPage() {
                   </option>
                 ))}
               </Select>
+              <p className="mt-1 text-xs text-zinc-500">
+                {form.approval_mode === 'email'
+                  ? 'Newly generated posts will require approval via the notification email below.'
+                  : 'No email will be sent for approvals.'}
+              </p>
             </div>
             <div>
               <label className="mb-1 block text-sm">Notification email</label>
@@ -160,7 +178,13 @@ export default function SettingsPage() {
                 onChange={(event) => update('notification_email', event.target.value)}
                 placeholder="you@example.com"
                 disabled={loading}
+                required={form.approval_mode === 'email'}
               />
+              <p className="mt-1 text-xs text-zinc-500">
+                {form.approval_mode === 'email'
+                  ? 'Required when Email approval is selected.'
+                  : 'Only used when Email approval mode is selected.'}
+              </p>
             </div>
           </CardContent>
         </Card>

@@ -248,6 +248,84 @@ def test_approval_email_not_sent_when_approval_mode_is_manual(
     )
 
 
+def test_approval_email_skipped_audit_recorded_when_preferences_missing(
+    client_a, monkeypatch
+) -> None:
+    """When the user has NO preferences stored, the email helper
+    MUST log an APPROVAL_EMAIL_SKIPPED audit event with reason
+    'approval_mode_not_email' so the operator has diagnostic
+    visibility. This prevents silent skips that hide the real reason
+    email was not sent."""
+
+    sent_calls = []
+
+    async def fake_send(*, to, subject, body, settings=None):
+        sent_calls.append({"to": to, "subject": subject})
+        from backend.app.services.email import EmailResult
+        return EmailResult(success=True)
+
+    monkeypatch.setattr(email_module, "send_email", fake_send)
+
+    async def fake_post(self, url, **_kwargs):
+        class _R:
+            status_code = 201
+
+            def json(self):
+                return {"id": "urn:li:ugcPost:fixture"}
+
+        return _R()
+
+    import httpx
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+    _mock_workflow(monkeypatch, title="Fix 2 no preferences")
+
+    # Do NOT set user preferences. The user document exists but has
+    # no `preferences` sub-doc — this is the production state.
+    async def _no_prefs():
+        from backend.app.db.mongo import get_database
+        db = get_database()
+        await db["users"].update_one(
+            {"_id": "USER_A"},
+            {"$set": {"updated_at": __import__("datetime").datetime.now(
+                __import__("datetime").timezone.utc)}},
+            upsert=True,
+        )
+    asyncio.run(_no_prefs())
+
+    response = client_a.post(
+        "/api/v1/content/generate", json={"topic": "fix2-no-prefs"}
+    )
+    assert response.status_code == 200
+
+    assert sent_calls == [], (
+        f"No email must be sent when preferences are missing. "
+        f"Got calls: {sent_calls}"
+    )
+
+    # The skip MUST be audited with APPROVAL_EMAIL_SKIPPED so the
+    # operator can diagnose why email is not flowing.
+    from backend.app.db.mongo import get_database
+    db = get_database()
+
+    async def _load_skips():
+        return [
+            e async for e in db["audit_events"].find(
+                {"event_type": "APPROVAL_EMAIL_SKIPPED",
+                 "details.draft_id": response.json()["draft_id"]}
+            )
+        ]
+
+    skip_events = asyncio.run(_load_skips())
+    assert skip_events, (
+        "APPROVAL_EMAIL_SKIPPED must be written whenever the helper "
+        "decides not to send an email — silent skips hide the root "
+        "cause from operators."
+    )
+    assert skip_events[0]["details"]["reason"] == "approval_mode_not_email"
+    assert skip_events[0]["details"]["preferences_present"] is False
+
+
 def test_approval_email_sent_when_approval_mode_is_email_and_smtp_configured(
     client_a, monkeypatch
 ) -> None:
