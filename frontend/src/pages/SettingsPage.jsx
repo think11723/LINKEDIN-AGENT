@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useApi } from '../services/api/backend.js';
 import { useToast } from '../context/ToastContext.jsx';
@@ -22,6 +22,7 @@ const APPROVAL_MODES = [
 export default function SettingsPage() {
   const api = useApi();
   const { toast } = useToast();
+  const cancelledRef = useRef(false);
 
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -37,41 +38,42 @@ export default function SettingsPage() {
     timezone: '',
   });
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      try {
-        const data = await api.getSettings();
-        if (cancelled) return;
-        setSettings(data);
-        setForm({
-          publishing_mode: data.publishing_mode || 'manual',
-          approval_mode: data.approval_mode || 'email',
-          notification_email: data.notification_email || '',
-          timezone: data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-        });
-        setDirty(false);
-        setError(null);
-      } catch (err) {
-        if (!cancelled) setError(err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-
-      // Phase 8B: keep the existing /health probe — useful diagnostic.
-      try {
-        const h = await api.healthCheck();
-        if (!cancelled) setHealth(h);
-      } catch {
-        if (!cancelled) setHealth({ status: 'unreachable' });
-      }
+  const load = useCallback(async () => {
+    cancelledRef.current = false;
+    setLoading(true);
+    try {
+      const data = await api.getSettings();
+      if (cancelledRef.current) return;
+      setSettings(data);
+      setForm({
+        publishing_mode: data.publishing_mode || 'manual',
+        approval_mode: data.approval_mode || 'email',
+        notification_email: data.notification_email || '',
+        timezone: data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+      });
+      setDirty(false);
+      setError(null);
+    } catch (err) {
+      if (!cancelledRef.current) setError(err);
+    } finally {
+      if (!cancelledRef.current) setLoading(false);
     }
+
+    // Phase 8B: keep the existing /health probe — useful diagnostic.
+    try {
+      const h = await api.healthCheck();
+      if (!cancelledRef.current) setHealth(h);
+    } catch {
+      if (!cancelledRef.current) setHealth({ status: 'unreachable' });
+    }
+  }, [api]);
+
+  useEffect(() => {
     load();
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
     };
-  }, [api]);
+  }, [load]);
 
   function update(field, value) {
     setForm((current) => ({ ...current, [field]: value }));

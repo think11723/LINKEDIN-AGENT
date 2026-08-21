@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useApi } from '../services/api/backend.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -12,6 +12,7 @@ export default function ProfilePage() {
   const api = useApi();
   const { user } = useAuth();
   const { toast } = useToast();
+  const cancelledRef = useRef(false);
 
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -28,35 +29,36 @@ export default function ProfilePage() {
     avatar_url: '',
   });
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      try {
-        const data = await api.getProfile();
-        if (cancelled) return;
-        setProfile(data);
-        setForm({
-          display_name: data.display_name || '',
-          headline: data.headline || '',
-          bio: data.bio || '',
-          linkedin_url: data.linkedin_url || '',
-          github_url: data.github_url || '',
-          avatar_url: data.avatar_url || '',
-        });
-        setDirty(false);
-        setError(null);
-      } catch (err) {
-        if (!cancelled) setError(err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+  const load = useCallback(async () => {
+    cancelledRef.current = false;
+    setLoading(true);
+    try {
+      const data = await api.getProfile();
+      if (cancelledRef.current) return;
+      setProfile(data);
+      setForm({
+        display_name: data.display_name || '',
+        headline: data.headline || '',
+        bio: data.bio || '',
+        linkedin_url: data.linkedin_url || '',
+        github_url: data.github_url || '',
+        avatar_url: data.avatar_url || '',
+      });
+      setDirty(false);
+      setError(null);
+    } catch (err) {
+      if (!cancelledRef.current) setError(err);
+    } finally {
+      if (!cancelledRef.current) setLoading(false);
     }
+  }, [api]);
+
+  useEffect(() => {
     load();
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
     };
-  }, [api]);
+  }, [load]);
 
   function update(field, value) {
     setForm((current) => ({ ...current, [field]: value }));

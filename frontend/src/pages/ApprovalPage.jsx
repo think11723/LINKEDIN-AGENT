@@ -79,6 +79,7 @@ export default function ApprovalPage() {
       setMessage(result?.message ?? 'Approved');
       toast.success('Approved');
       await loadQueue();
+      setToken('');
     } catch (err) {
       toast.error('Approve failed', err?.message);
       setMessage(err?.message);
@@ -95,6 +96,7 @@ export default function ApprovalPage() {
       setMessage(result?.message ?? 'Rejected');
       toast.success('Rejected');
       await loadQueue();
+      setToken('');
     } catch (err) {
       toast.error('Reject failed', err?.message);
       setMessage(err?.message);
