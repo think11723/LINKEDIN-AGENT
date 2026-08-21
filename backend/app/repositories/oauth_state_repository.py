@@ -32,7 +32,6 @@ class OAuthStateRepository:
         self,
         *,
         user_id: str,
-        code_verifier: str,
         ttl_seconds: int = 600,
     ) -> dict:
         now = _utcnow()
@@ -41,7 +40,6 @@ class OAuthStateRepository:
             "_id": state,
             "state": state,
             "user_id": user_id,
-            "code_verifier": code_verifier,
             "created_at": now,
             "expires_at": now + timedelta(seconds=ttl_seconds),
             "consumed": False,

@@ -58,7 +58,6 @@ def test_callback_rejects_expired_state(client_a: TestClient) -> None:
                 "_id": state,
                 "state": state,
                 "user_id": "USER_A",
-                "code_verifier": "v",
                 "created_at": datetime.now(timezone.utc),
                 "expires_at": datetime.now(timezone.utc),  # already past
                 "consumed": False,
@@ -97,7 +96,6 @@ def test_oauth_state_is_single_use(client_a: TestClient) -> None:
                 "_id": state,
                 "state": state,
                 "user_id": "USER_A",
-                "code_verifier": "v",
                 "created_at": datetime.now(timezone.utc),
                 "expires_at": datetime.now(timezone.utc).replace(year=2099),
                 "consumed": True,  # already consumed

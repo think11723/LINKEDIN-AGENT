@@ -34,7 +34,6 @@ FAKE_REDIRECT_URI = (
     "/api/v1/linkedin/callback"
 )
 FAKE_AUTH_CODE = "FAKE-AUTH-CODE-AAA"
-FAKE_VERIFIER = "FAKE-PKCE-VERIFIER-BBB"
 
 
 async def _seed_valid_state(state: str) -> None:
@@ -49,7 +48,6 @@ async def _seed_valid_state(state: str) -> None:
             "_id": state,
             "state": state,
             "user_id": "USER_A",
-            "code_verifier": FAKE_VERIFIER,
             "created_at": datetime.now(timezone.utc),
             "expires_at": datetime.now(timezone.utc).replace(year=2099),
             "consumed": False,
@@ -149,7 +147,12 @@ def test_token_exchange_post_body_shape(monkeypatch) -> None:
     assert body["redirect_uri"] == FAKE_REDIRECT_URI
     assert body["client_id"] == FAKE_CLIENT_ID
     assert body["client_secret"] == FAKE_CLIENT_SECRET
-    assert body["code_verifier"] == FAKE_VERIFIER
+    # PKCE must NOT be sent for a confidential server-side 3-legged
+    # OAuth flow — sending code_verifier here is what triggered
+    # LinkedIn's invalid_client response.
+    assert "code_verifier" not in body
+    assert "code_challenge" not in body
+    assert "code_challenge_method" not in body
 
     # 4. Headers must include Accept: application/json.
     assert "headers" in captured["kwargs"]

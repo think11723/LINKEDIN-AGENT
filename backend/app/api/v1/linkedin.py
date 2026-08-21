@@ -9,11 +9,9 @@ securely binds the callback to the originating Firebase user.
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import logging
 import re
-import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from urllib.parse import urlencode
@@ -63,11 +61,6 @@ class StatusResponse(BaseModel):
 
 class DisconnectResponse(BaseModel):
     connected: bool
-
-
-def _pkce_code_challenge(verifier: str) -> str:
-    digest = hashlib.sha256(verifier.encode("ascii")).digest()
-    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
 
 
 def _resolve_linkedin_settings(settings: Settings) -> tuple[str, str, str]:
@@ -249,16 +242,35 @@ def _build_authorize_url(
     client_id: str,
     redirect_uri: str,
     state: str,
-    code_challenge: str,
 ) -> str:
+    """Build the standard 3-legged Authorization Code Flow authorize URL.
+
+    Confidential server-side LinkedIn apps use the standard
+    `/oauth/v2/authorization` endpoint with the canonical parameter
+    set:
+
+        response_type=code
+        client_id=<client id>
+        redirect_uri=<callback URL>
+        scope=<space-delimited scopes>
+        state=<CSRF nonce>
+
+    PKCE (`code_challenge`, `code_challenge_method`) is intentionally
+    NOT sent — it belongs to LinkedIn's separate native-app flow at
+    `/oauth/native-pkce/authorization`, which excludes `client_secret`
+    from its token exchange. Mixing PKCE params with the standard
+    authorize URL while still sending `client_secret` is rejected by
+    LinkedIn as an invalid flow.
+
+    See:
+    https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow
+    """
     params = {
         "response_type": "code",
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "scope": " ".join(LINKEDIN_SCOPES),
         "state": state,
-        "code_challenge": code_challenge,
-        "code_challenge_method": "S256",
     }
     return f"{LINKEDIN_AUTHORIZE_URL}?{urlencode(params)}"
 
@@ -269,22 +281,22 @@ async def connect(
     oauth_states: OAuthStateRepository = Depends(get_oauth_state_repository),
     audit: AuditRepository = Depends(get_audit_repository),
 ) -> ConnectResponse:
-    """Generate a PKCE-protected authorization URL for the current user."""
+    """Generate the standard 3-legged Authorization Code Flow URL.
+
+    CSRF protection is preserved via the ``state`` nonce. PKCE is
+    intentionally NOT used — this is a confidential server-side app.
+    """
     settings = get_settings()
     client_id, _, redirect_uri = _resolve_linkedin_settings(settings)
 
-    code_verifier = secrets.token_urlsafe(48)
-    code_challenge = _pkce_code_challenge(code_verifier)
     record = await oauth_states.create(
         user_id=user.uid,
-        code_verifier=code_verifier,
         ttl_seconds=600,
     )
     authorization_url = _build_authorize_url(
         client_id=client_id,
         redirect_uri=redirect_uri,
         state=record["state"],
-        code_challenge=code_challenge,
     )
 
     await audit.log(
@@ -339,7 +351,6 @@ async def callback(
         )
         return _redirect("linkedin=error&reason=invalid_state")
     user_id = record["user_id"]
-    code_verifier = record["code_verifier"]
 
     try:
         client_id, client_secret, redirect_uri = _resolve_linkedin_settings(settings)
@@ -362,7 +373,6 @@ async def callback(
                     "redirect_uri": redirect_uri,
                     "client_id": client_id,
                     "client_secret": client_secret,
-                    "code_verifier": code_verifier,
                 },
                 headers={"Accept": "application/json"},
             )

@@ -45,7 +45,6 @@ async def _seed_valid_state(state: str = "diagnostic-state-1234") -> None:
             "_id": state,
             "state": state,
             "user_id": "USER_A",
-            "code_verifier": "FAKE-PKCE-VERIFIER-1234567890",
             "created_at": datetime.now(timezone.utc),
             "expires_at": datetime.now(timezone.utc).replace(year=2099),
             "consumed": False,
