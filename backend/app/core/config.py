@@ -47,6 +47,14 @@ class Settings:
     linkedin_client_secret: Optional[str]
     linkedin_redirect_uri: str
 
+    # Email (SMTP) for approval notifications -------------------------------
+    smtp_host: Optional[str] = None
+    smtp_port: int = 587
+    smtp_username: Optional[str] = None
+    smtp_password: Optional[str] = None
+    email_from: Optional[str] = None
+    email_use_tls: bool = True
+
     # Image generation passthrough ------------------------------------------
     image_provider: str
     image_model: str
@@ -81,6 +89,19 @@ class Settings:
             "LINKEDIN_REDIRECT_URI",
             "http://localhost:8000/api/v1/linkedin/callback",
         ).strip()
+
+        # Email (SMTP) — used by approval-email notifications.
+        self.smtp_host = os.getenv("SMTP_HOST") or None
+        try:
+            self.smtp_port = int(os.getenv("SMTP_PORT", "587"))
+        except ValueError:
+            self.smtp_port = 587
+        self.smtp_username = os.getenv("SMTP_USERNAME") or None
+        self.smtp_password = os.getenv("SMTP_PASSWORD") or None
+        self.email_from = os.getenv("EMAIL_FROM") or None
+        self.email_use_tls = os.getenv("SMTP_USE_TLS", "true").lower() in {
+            "1", "true", "yes"
+        }
 
         self.image_provider = os.getenv("IMAGE_PROVIDER", "pollinations")
         self.image_model = os.getenv("IMAGE_MODEL", "flux")

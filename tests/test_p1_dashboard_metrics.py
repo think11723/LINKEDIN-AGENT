@@ -14,7 +14,7 @@ def _create_draft(client, *, user="USER_A", title="T", status="draft", published
         json={"topic": "d", "title": title, "content": "c", "hashtags": []},
     )
     assert response.status_code == 201
-    draft_id = response.json()["draft_id"]
+    id = response.json()["id"]
 
     if status != "draft" or published:
         async def _update():
@@ -23,10 +23,10 @@ def _create_draft(client, *, user="USER_A", title="T", status="draft", published
             if published:
                 update["published_at"] = datetime.now(timezone.utc)
                 update["linkedin_post_id"] = "urn:li:ugcPost:9999"
-            await db["drafts"].update_one({"_id": draft_id}, {"$set": update})
+            await db["drafts"].update_one({"_id": id}, {"$set": update})
 
         asyncio.run(_update())
-    return draft_id
+    return id
 
 
 def _schedule(client, *, when=None, status="pending"):

@@ -36,6 +36,7 @@ from backend.app.repositories import (
     AuditRepository,
     DraftRepository,
     SourceJobRepository,
+    UserRepository,
 )
 from backend.app.services.sources import (
     SourceBlockedError,
@@ -274,6 +275,7 @@ class SourceJobRunner:
         drafts = DraftRepository(db)
         approvals = ApprovalRepository(db)
         audit = AuditRepository(db)
+        users = UserRepository(db)
 
         # ------------------------------------------------------------------
         # Stage 1: fetch + analyze via the adapter.
@@ -423,6 +425,7 @@ class SourceJobRunner:
             drafts=drafts,
             approvals=approvals,
             audit=audit,
+            users=users,
             source_url=url,
             source_metadata=package.metadata,
         )

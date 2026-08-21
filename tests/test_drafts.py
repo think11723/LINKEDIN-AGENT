@@ -12,7 +12,7 @@ def test_create_draft_returns_owner(client_a: TestClient) -> None:
     )
     assert response.status_code == 201
     body = response.json()
-    assert body["draft_id"]
+    assert body["id"]
     assert body["user_id"] == "USER_A"
     assert body["status"] == "draft"
     assert body["approval_token"]
@@ -37,7 +37,7 @@ def test_update_draft_persists(client_a: TestClient) -> None:
         json={"topic": "ai", "title": "Old", "content": "Old"},
     ).json()
     response = client_a.put(
-        f"/api/v1/drafts/{created['draft_id']}",
+        f"/api/v1/drafts/{created['id']}",
         json={"title": "New", "content": "New"},
     )
     assert response.status_code == 200
@@ -49,9 +49,9 @@ def test_delete_draft(client_a: TestClient) -> None:
         "/api/v1/drafts",
         json={"topic": "ai", "title": "T"},
     ).json()
-    response = client_a.delete(f"/api/v1/drafts/{created['draft_id']}")
+    response = client_a.delete(f"/api/v1/drafts/{created['id']}")
     assert response.status_code == 204
-    follow_up = client_a.get(f"/api/v1/drafts/{created['draft_id']}")
+    follow_up = client_a.get(f"/api/v1/drafts/{created['id']}")
     assert follow_up.status_code == 404
 
 
@@ -72,7 +72,7 @@ def test_published_draft_cannot_be_edited(client_a: TestClient) -> None:
         repo = DraftRepository(db)
         await repo.mark_published(
             user_id="USER_A",
-            draft_id=created["draft_id"],
+            draft_id=created["id"],
             linkedin_post_id="x",
         )
 
@@ -81,7 +81,7 @@ def test_published_draft_cannot_be_edited(client_a: TestClient) -> None:
     asyncio.run(_publish())
 
     response = client_a.put(
-        f"/api/v1/drafts/{created['draft_id']}",
+        f"/api/v1/drafts/{created['id']}",
         json={"title": "New"},
     )
     assert response.status_code == 409
@@ -102,14 +102,14 @@ def test_published_endpoint_only_returns_callers_posts(client_a: TestClient) -> 
         json={"topic": "ai", "title": "A2", "content": "c"},
     ).json()
 
-    async def _publish(draft_id: str) -> None:
+    async def _publish(id: str) -> None:
         repo = DraftRepository(get_database())
         await repo.mark_published(
-            user_id="USER_A", draft_id=draft_id, linkedin_post_id="x"
+            user_id="USER_A", draft_id=id, linkedin_post_id="x"
         )
 
-    asyncio.run(_publish(a_draft["draft_id"]))
-    asyncio.run(_publish(b_draft["draft_id"]))
+    asyncio.run(_publish(a_draft["id"]))
+    asyncio.run(_publish(b_draft["id"]))
 
     response = client_a.get("/api/v1/approval/published")
     assert response.status_code == 200

@@ -28,6 +28,7 @@ from backend.app.api.deps import (
     get_audit_repository,
     get_draft_repository,
     get_source_job_repository,
+    get_user_repository,
 )
 from backend.app.core.security import AuthenticatedUser, get_current_user
 from backend.app.models.source import (
@@ -41,6 +42,7 @@ from backend.app.repositories import (
     AuditRepository,
     DraftRepository,
     SourceJobRepository,
+    UserRepository,
 )
 from backend.app.services.sources import (
     GITHUB_ALLOWLIST,
@@ -72,6 +74,7 @@ async def generate_content(
     drafts: DraftRepository = Depends(get_draft_repository),
     approvals: ApprovalRepository = Depends(get_approval_repository),
     audit: AuditRepository = Depends(get_audit_repository),
+    users: UserRepository = Depends(get_user_repository),
 ) -> GenerateContentResponse:
     """Generate a LinkedIn draft using the existing LangGraph workflow.
 
@@ -96,6 +99,7 @@ async def generate_content(
             drafts=drafts,
             approvals=approvals,
             audit=audit,
+            users=users,
             source_url=None,
             source_metadata=None,
         )
@@ -298,6 +302,7 @@ async def _persist_result(
     drafts: DraftRepository,
     approvals: ApprovalRepository,
     audit: AuditRepository,
+    users: Optional[UserRepository] = None,
     source_url: Optional[str] = None,
     source_metadata: Optional[dict] = None,
 ) -> GenerateContentResponse:
@@ -380,11 +385,27 @@ async def _persist_result(
         },
     )
 
+    # Approval-email notification. Only when the user has opted in
+    # via ``approval_mode == "email"`` and provided a notification
+    # address. Failure here must NEVER prevent the draft from being
+    # returned to the caller — the email is best-effort and is
+    # recorded as APPROVAL_EMAIL_SENT / APPROVAL_EMAIL_FAILED.
+    if users is not None:
+        await _maybe_send_approval_email(
+            users=users,
+            audit=audit,
+            user_id=user.uid,
+            draft_id=draft_id,
+            draft_title=title,
+            draft_topic=workflow_result.topic,
+            approval_token=approval["_id"],
+        )
+
     payload = workflow_result.model_dump(exclude_none=True)
     payload["draft_id"] = draft_id
     payload["approval_token"] = approval["_id"]
     payload["draft"] = {
-        "draft_id": draft_doc["_id"],
+        "id": draft_doc["_id"],
         "title": title,
         "topic": draft_doc.get("topic"),
         "content": content,
@@ -402,3 +423,103 @@ async def _persist_result(
     payload["source_url"] = source_url
     payload["source_metadata"] = source_metadata
     return GenerateContentResponse.model_validate(payload)
+
+
+async def _maybe_send_approval_email(
+    *,
+    users: "UserRepository",
+    audit: "AuditRepository",
+    user_id: str,
+    draft_id: str,
+    draft_title: str,
+    draft_topic: str,
+    approval_token: str,
+) -> None:
+    """Send an approval-email notification if the user has opted in.
+
+    Behaviour:
+      * If ``preferences.approval_mode != "email"`` → no email.
+      * If no ``preferences.notification_email`` is set → no email.
+      * If SMTP is not configured on the server → no email (audit
+        event records the reason).
+      * If SMTP send fails → ``APPROVAL_EMAIL_FAILED`` audit event
+        with the SMTP error class name and the body fingerprint.
+      * If SMTP send succeeds → ``APPROVAL_EMAIL_SENT`` audit event
+        with the body fingerprint.
+
+    The email body itself is NEVER logged — only its SHA-256[:16]
+    fingerprint. The approval token is never echoed into any log.
+    """
+    import hashlib
+
+    from backend.app.core.config import get_settings
+    from backend.app.services.email import (
+        build_approval_email_body,
+        send_email,
+    )
+
+    user_doc = await users.get_preferences(user_id) or {}
+    prefs = user_doc.get("preferences") or {}
+
+    if prefs.get("approval_mode") != "email":
+        return
+
+    to_address = prefs.get("notification_email")
+    if not to_address:
+        await audit.log(
+            user_id=user_id,
+            event_type="APPROVAL_EMAIL_SKIPPED",
+            description=draft_title,
+            details={"reason": "notification_email_not_set"},
+        )
+        return
+
+    settings = get_settings()
+    approval_url = (
+        f"{settings.frontend_url.rstrip('/')}/settings"
+        f"?approval_token={approval_token}"
+    )
+    subject = f"Approval needed: {draft_title[:80]}"
+    body = build_approval_email_body(
+        draft_title=draft_title,
+        draft_topic=draft_topic,
+        approval_token=approval_token,
+        approval_url=approval_url,
+    )
+
+    recipient_fp = hashlib.sha256(
+        to_address.encode("utf-8")
+    ).hexdigest()[:16]
+
+    result = await send_email(
+        to=to_address,
+        subject=subject,
+        body=body,
+    )
+
+    if result.success:
+        await audit.log(
+            user_id=user_id,
+            event_type="APPROVAL_EMAIL_SENT",
+            description=draft_title,
+            details={
+                "draft_id": draft_id,
+                "approval_token": approval_token,
+                "body_fingerprint_sha256_16": result.fingerprint_sha256_16,
+                "recipient_fingerprint_sha256_16": recipient_fp,
+            },
+        )
+        return
+
+    await audit.log(
+        user_id=user_id,
+        event_type="APPROVAL_EMAIL_FAILED",
+        description=draft_title,
+        details={
+            "draft_id": draft_id,
+            "approval_token": approval_token,
+            "error": result.error or "unknown",
+            "body_fingerprint_sha256_16": result.fingerprint_sha256_16,
+            "recipient_fingerprint_sha256_16": recipient_fp,
+        },
+    )

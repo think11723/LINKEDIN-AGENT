@@ -21,12 +21,12 @@ def _create_draft(client, *, title="T"):
         json={"topic": "v", "title": title, "content": "c", "hashtags": []},
     )
     assert response.status_code == 201
-    return response.json()["draft_id"]
+    return response.json()["id"]
 
 
 def test_draft_default_state_is_draft(client_a):
-    draft_id = _create_draft(client_a)
-    response = client_a.get(f"/api/v1/drafts/{draft_id}")
+    id = _create_draft(client_a)
+    response = client_a.get(f"/api/v1/drafts/{id}")
     body = response.json()
     assert body["status"] == "draft"
     assert body["published_at"] is None
@@ -84,12 +84,12 @@ def test_draft_metadata_is_returned_after_generation(client_a, monkeypatch):
 
 
 def test_published_draft_blocks_edits(client_a):
-    draft_id = _create_draft(client_a)
+    id = _create_draft(client_a)
 
     async def _mark_published():
         db = get_database()
         await db["drafts"].update_one(
-            {"_id": draft_id},
+            {"_id": id},
             {
                 "$set": {
                     "status": "published",
@@ -104,15 +104,15 @@ def test_published_draft_blocks_edits(client_a):
     # The viewer should NOT show Edit / Publish-now.
     # Backend confirms the 409 guard.
     response = client_a.put(
-        f"/api/v1/drafts/{draft_id}", json={"title": "Try"}
+        f"/api/v1/drafts/{id}", json={"title": "Try"}
     )
     assert response.status_code == 409
 
 
 def test_unpublished_draft_allows_edits(client_a):
-    draft_id = _create_draft(client_a)
+    id = _create_draft(client_a)
     response = client_a.put(
-        f"/api/v1/drafts/{draft_id}", json={"title": "Editable"}
+        f"/api/v1/drafts/{id}", json={"title": "Editable"}
     )
     assert response.status_code == 200
     assert response.json()["title"] == "Editable"
@@ -122,15 +122,15 @@ def test_failed_scheduler_draft_keeps_status_failed(client_a):
     """The viewer reads status from the draft + scheduler. A scheduler-failed
     draft (status=failed) is readable but not publishable.
     """
-    draft_id = _create_draft(client_a)
+    id = _create_draft(client_a)
 
     async def _mark_failed():
         db = get_database()
         await db["drafts"].update_one(
-            {"_id": draft_id}, {"$set": {"status": "failed"}}
+            {"_id": id}, {"$set": {"status": "failed"}}
         )
 
     asyncio.run(_mark_failed())
-    response = client_a.get(f"/api/v1/drafts/{draft_id}")
+    response = client_a.get(f"/api/v1/drafts/{id}")
     assert response.status_code == 200
     assert response.json()["status"] == "failed"

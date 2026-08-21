@@ -2,10 +2,19 @@
 
 The legacy ``approval/store.py`` + JSON file store is preserved for the
 CLI. The SaaS path here uses the Mongo-backed ``ApprovalRepository``.
+
+Workflow:
+  * POST /api/v1/approval/approve — when no ``schedule_time`` is
+    provided, the approved draft is published immediately via the
+    shared publishing service. When ``schedule_time`` is provided,
+    the draft is enqueued for later publication by the scheduler.
+  * The publishing service is the single source of truth for posting
+    to LinkedIn — this route does not duplicate any LinkedIn code.
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -25,11 +34,14 @@ from backend.app.repositories import (
     DraftRepository,
     SchedulerRepository,
 )
+from backend.app.services.publishing import publish_now
 from shared.schemas import (
     ApprovalActionResponse,
     ApprovalDraftResponse,
     ApprovalQueueItem,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/approval", tags=["approval"])
 
@@ -191,7 +203,50 @@ async def approve_draft(
         description=(draft or {}).get("title", ""),
         details={"draft_id": record["draft_id"]},
     )
-    return ApprovalActionResponse(success=True, message="Draft approved successfully")
+
+    # Idempotency: if the draft is already published, do NOT re-publish.
+    # This protects against double-clicks and against re-clicking
+    # Approve on an approval record that has already been approved
+    # once (the second approve returns the existing approval record
+    # unchanged — see ApprovalRepository.approve).
+    if (draft or {}).get("published_at"):
+        return ApprovalActionResponse(
+            success=True,
+            message="Post was already approved and published.",
+        )
+
+    # No schedule_time → publish immediately via the shared publishing
+    # service. This is the desired product workflow: human Approve on
+    # the Approval page both records the human-review decision AND
+    # triggers the publish.
+    publish_result = await publish_now(user.uid, record["draft_id"])
+
+    if publish_result.success:
+        return ApprovalActionResponse(
+            success=True,
+            message="Post approved and published successfully.",
+        )
+
+    # Publishing failed AFTER approval succeeded. The approval is
+    # recorded; the operator must retry the publish separately. Do NOT
+    # report success.
+    await audit.log(
+        user_id=user.uid,
+        event_type="PUBLISH_FAILED_AFTER_APPROVAL",
+        description=(draft or {}).get("title", ""),
+        details={
+            "draft_id": record["draft_id"],
+            "error": publish_result.error_message or "unknown",
+            "already_published": publish_result.already_published,
+        },
+    )
+    return ApprovalActionResponse(
+        success=False,
+        message=(
+            "Post was approved but publishing to LinkedIn failed. "
+            "Use the Draft viewer to retry."
+        ),
+    )
 
 
 @router.post("/reject", response_model=ApprovalActionResponse)

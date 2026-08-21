@@ -76,8 +76,13 @@ export default function ApprovalPage() {
     setActionLoading('approve');
     try {
       const result = await api.approveDraft({ token });
-      setMessage(result?.message ?? 'Approved');
-      toast.success('Approved');
+      const message = result?.message ?? 'Approved';
+      setMessage(message);
+      if (result?.success === false) {
+        toast.error('Approved, but publishing failed', message);
+      } else {
+        toast.success('Approved and published');
+      }
       await loadQueue();
       setToken('');
     } catch (err) {

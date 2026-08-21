@@ -52,9 +52,9 @@ def test_publish_now_404_cross_user(client_a, client_b):
         json={"topic": "iso", "title": "A", "content": "x"},
     )
     assert create_a.status_code == 201
-    draft_id = create_a.json()["draft_id"]
+    id = create_a.json()["id"]
 
-    response = client_b.post(f"/api/v1/drafts/{draft_id}/publish")
+    response = client_b.post(f"/api/v1/drafts/{id}/publish")
     assert response.status_code == 404
 
 
@@ -65,9 +65,9 @@ def test_publish_now_400_when_linkedin_not_connected(client_a):
         json={"topic": "no-linkedin", "title": "T", "content": "x"},
     )
     assert create.status_code == 201
-    draft_id = create.json()["draft_id"]
+    id = create.json()["id"]
 
-    response = client_a.post(f"/api/v1/drafts/{draft_id}/publish")
+    response = client_a.post(f"/api/v1/drafts/{id}/publish")
     assert response.status_code == 400
     body = response.json()
     assert "LinkedIn" in body["error"]["message"]
@@ -92,14 +92,14 @@ def test_publish_now_200_idempotent(client_a, monkeypatch):
     create = client_a.post(
         "/api/v1/drafts", json={"topic": "twice", "title": "T", "content": "x"}
     )
-    draft_id = create.json()["draft_id"]
+    id = create.json()["id"]
 
-    first = client_a.post(f"/api/v1/drafts/{draft_id}/publish")
+    first = client_a.post(f"/api/v1/drafts/{id}/publish")
     assert first.status_code == 200
     assert first.json()["linkedin_post_id"] == "urn:li:ugcPost:1234"
     assert first.json()["already_published"] is False
 
-    second = client_a.post(f"/api/v1/drafts/{draft_id}/publish")
+    second = client_a.post(f"/api/v1/drafts/{id}/publish")
     assert second.status_code == 200
     assert second.json()["already_published"] is True
     assert second.json()["linkedin_post_id"] == "urn:li:ugcPost:1234"
@@ -124,9 +124,9 @@ def test_publish_now_200_with_linkedin_stub(client_a, monkeypatch):
         "/api/v1/drafts",
         json={"topic": "happy", "title": "H", "content": "world", "hashtags": ["#t"]},
     )
-    draft_id = create.json()["draft_id"]
+    id = create.json()["id"]
 
-    response = client_a.post(f"/api/v1/drafts/{draft_id}/publish")
+    response = client_a.post(f"/api/v1/drafts/{id}/publish")
     assert response.status_code == 200
     body = response.json()
     assert body["linkedin_post_id"] == "urn:li:ugcPost:9999"
@@ -152,8 +152,8 @@ def test_publish_now_logs_draft_published_audit_event(client_a, monkeypatch):
     create = client_a.post(
         "/api/v1/drafts", json={"topic": "audit", "title": "A", "content": "x"}
     )
-    draft_id = create.json()["draft_id"]
-    client_a.post(f"/api/v1/drafts/{draft_id}/publish")
+    id = create.json()["id"]
+    client_a.post(f"/api/v1/drafts/{id}/publish")
 
     from backend.app.db.mongo import get_database
     db = get_database()
@@ -163,7 +163,7 @@ def test_publish_now_logs_draft_published_audit_event(client_a, monkeypatch):
         return [doc async for doc in cursor]
 
     events = asyncio.run(_load())
-    assert any(e.get("details", {}).get("draft_id") == draft_id for e in events)
+    assert any(e.get("details", {}).get("id") == id for e in events)
 
 
 def test_publish_now_400_on_linkedin_5xx(client_a, monkeypatch):
@@ -182,8 +182,8 @@ def test_publish_now_400_on_linkedin_5xx(client_a, monkeypatch):
     create = client_a.post(
         "/api/v1/drafts", json={"topic": "fail", "title": "F", "content": "x"}
     )
-    draft_id = create.json()["draft_id"]
-    response = client_a.post(f"/api/v1/drafts/{draft_id}/publish")
+    id = create.json()["id"]
+    response = client_a.post(f"/api/v1/drafts/{id}/publish")
     assert response.status_code == 400
     body = response.json()
     assert "500" in body["error"]["message"] or "LinkedIn" in body["error"]["message"]
@@ -206,10 +206,10 @@ def test_publish_now_does_not_leak_linkedin_response_body(client_a, monkeypatch,
     create = client_a.post(
         "/api/v1/drafts", json={"topic": "leak", "title": "L", "content": "x"}
     )
-    draft_id = create.json()["draft_id"]
+    id = create.json()["id"]
 
     with caplog.at_level(logging.WARNING):
-        response = client_a.post(f"/api/v1/drafts/{draft_id}/publish")
+        response = client_a.post(f"/api/v1/drafts/{id}/publish")
 
     assert response.status_code == 400
     assert "LEAKED_BODY" not in caplog.text

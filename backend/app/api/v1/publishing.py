@@ -63,7 +63,7 @@ async def publish_draft_now(
             event_type="DRAFT_PUBLISHED_NOW",
             description=draft.get("title", ""),
             details={
-                "draft_id": draft_id,
+                "id": draft_id,
                 "linkedin_post_id": result.linkedin_post_id,
                 "idempotent": True,
             },
@@ -74,7 +74,7 @@ async def publish_draft_now(
             event_type="DRAFT_PUBLISHED_NOW",
             description=draft.get("title", ""),
             details={
-                "draft_id": draft_id,
+                "id": draft_id,
                 "linkedin_post_id": result.linkedin_post_id,
             },
         )

@@ -17,7 +17,7 @@ def _create_draft(client: TestClient, *, topic: str = "isolation test") -> dict:
 def test_user_a_cannot_read_user_b_draft(client_a: TestClient, client_b: TestClient) -> None:
     b_draft = _create_draft(client_b)
 
-    response = client_a.get(f"/api/v1/drafts/{b_draft['draft_id']}")
+    response = client_a.get(f"/api/v1/drafts/{b_draft['id']}")
     assert response.status_code == 404
 
 
@@ -25,13 +25,13 @@ def test_user_a_cannot_update_user_b_draft(client_a: TestClient, client_b: TestC
     b_draft = _create_draft(client_b)
 
     response = client_a.put(
-        f"/api/v1/drafts/{b_draft['draft_id']}",
+        f"/api/v1/drafts/{b_draft['id']}",
         json={"title": "hijacked"},
     )
     assert response.status_code == 404
 
     # Verify the underlying record is untouched.
-    follow_up = client_b.get(f"/api/v1/drafts/{b_draft['draft_id']}")
+    follow_up = client_b.get(f"/api/v1/drafts/{b_draft['id']}")
     assert follow_up.status_code == 200
     assert follow_up.json()["title"] == b_draft["title"]
 
@@ -39,11 +39,11 @@ def test_user_a_cannot_update_user_b_draft(client_a: TestClient, client_b: TestC
 def test_user_a_cannot_delete_user_b_draft(client_a: TestClient, client_b: TestClient) -> None:
     b_draft = _create_draft(client_b)
 
-    response = client_a.delete(f"/api/v1/drafts/{b_draft['draft_id']}")
+    response = client_a.delete(f"/api/v1/drafts/{b_draft['id']}")
     assert response.status_code == 404
 
     # Verify the underlying record is untouched.
-    follow_up = client_b.get(f"/api/v1/drafts/{b_draft['draft_id']}")
+    follow_up = client_b.get(f"/api/v1/drafts/{b_draft['id']}")
     assert follow_up.status_code == 200
 
 
@@ -95,7 +95,7 @@ def test_user_a_cannot_edit_user_b_via_approval_edit(
     response = client_a.post(
         "/api/v1/approval/edit",
         json={
-            "draft_id": b_draft["draft_id"],
+            "draft_id": b_draft["id"],
             "title": "hijacked",
             "content": "x",
             "hashtags": [],

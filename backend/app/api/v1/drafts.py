@@ -27,7 +27,7 @@ router = APIRouter(prefix="/api/v1/drafts", tags=["drafts"])
 
 
 class DraftResponse(BaseModel):
-    id: str = Field(..., alias="draft_id")
+    id: str
     user_id: str
     topic: str
     title: str
@@ -49,9 +49,6 @@ class DraftResponse(BaseModel):
     # from a URL. The viewer surfaces these in the Status card.
     source_url: Optional[str] = None
     source_metadata: Optional[dict] = None
-
-    class Config:
-        populate_by_name = True
 
 
 class DraftListResponse(BaseModel):
@@ -87,7 +84,7 @@ class DraftUpdateRequest(BaseModel):
 def _to_response(doc: dict) -> DraftResponse:
     return DraftResponse.model_validate(
         {
-            "draft_id": doc["_id"],
+            "id": doc["_id"],
             "user_id": doc["user_id"],
             "topic": doc.get("topic", ""),
             "title": doc.get("title", ""),

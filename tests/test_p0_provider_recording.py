@@ -139,7 +139,7 @@ def test_content_endpoint_persists_provider_via_metadata(client_a, monkeypatch):
 
     response = client_a.post("/api/v1/content/generate", json={"topic": "x"})
     assert response.status_code == 200
-    draft_id = response.json()["draft_id"]
+    id = response.json()["draft_id"]
 
     # Fetch the persisted draft directly from the repository.
     import asyncio
@@ -147,7 +147,7 @@ def test_content_endpoint_persists_provider_via_metadata(client_a, monkeypatch):
     from backend.app.repositories.draft_repository import DraftRepository
 
     repo = DraftRepository(get_database())
-    raw = asyncio.run(repo.col.find_one({"_id": draft_id}))
+    raw = asyncio.run(repo.col.find_one({"_id": id}))
     assert raw["metadata"]["llm"]["writer_provider"] == "groq"
     assert raw["metadata"]["llm"]["writer_model"] == "llama-3.3-70b-versatile"
 
@@ -166,5 +166,5 @@ def test_failed_generation_does_not_falsely_record_provider(client_a, monkeypatc
 
     response = client_a.post("/api/v1/content/generate", json={"topic": "boom"})
     assert response.status_code == 500
-    # No draft_id returned.
-    assert "draft_id" not in response.json()
+    # No id returned.
+    assert "id" not in response.json()
