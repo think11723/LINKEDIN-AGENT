@@ -70,12 +70,17 @@ class Settings:
         self.frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173").strip()
 
         self.linkedin_token_encryption_key = os.getenv("LINKEDIN_TOKEN_ENCRYPTION_KEY")
-        self.linkedin_client_id = os.getenv("LINKEDIN_CLIENT_ID")
-        self.linkedin_client_secret = os.getenv("LINKEDIN_CLIENT_SECRET")
+        # P0-9: .strip() the LinkedIn OAuth credentials to defend against
+        # accidental whitespace / quotes / newlines being introduced via
+        # copy-paste into env-var UIs. A single trailing '\n' or a pair
+        # of surrounding '"' would otherwise be sent verbatim to
+        # LinkedIn's /oauth/v2/accessToken and produce invalid_client.
+        self.linkedin_client_id = os.getenv("LINKEDIN_CLIENT_ID", "").strip()
+        self.linkedin_client_secret = os.getenv("LINKEDIN_CLIENT_SECRET", "").strip()
         self.linkedin_redirect_uri = os.getenv(
             "LINKEDIN_REDIRECT_URI",
             "http://localhost:8000/api/v1/linkedin/callback",
-        )
+        ).strip()
 
         self.image_provider = os.getenv("IMAGE_PROVIDER", "pollinations")
         self.image_model = os.getenv("IMAGE_MODEL", "flux")

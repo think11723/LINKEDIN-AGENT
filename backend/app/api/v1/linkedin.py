@@ -71,16 +71,25 @@ def _pkce_code_challenge(verifier: str) -> str:
 
 
 def _resolve_linkedin_settings(settings: Settings) -> tuple[str, str, str]:
-    if not settings.linkedin_client_id or not settings.linkedin_client_secret:
+    """Return (client_id, client_secret, redirect_uri) with all
+    common paste-corruption stripped.
+
+    Settings already ``.strip()`` ASCII whitespace, but real-world
+    Railway env-var paste introduces non-whitespace junk too (BOM,
+    zero-width spaces, surrounding quote / backtick / paren
+    pairs). Aggressively normalising here means a single
+    paste-corruption does not reach LinkedIn's /oauth/v2/accessToken
+    as ``invalid_client``.
+    """
+    client_id = _normalize_credential(settings.linkedin_client_id)
+    client_secret = _normalize_credential(settings.linkedin_client_secret)
+    redirect_uri = _normalize_credential(settings.linkedin_redirect_uri)
+    if not client_id or not client_secret:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="LinkedIn OAuth is not configured on the server.",
         )
-    return (
-        settings.linkedin_client_id,
-        settings.linkedin_client_secret,
-        settings.linkedin_redirect_uri,
-    )
+    return (client_id, client_secret, redirect_uri)
 
 
 # OAuth error codes are short ASCII identifiers (RFC 6749 §5.2 + LinkedIn
@@ -105,6 +114,134 @@ def _sanitize_oauth_error_text(value: str) -> Optional[str]:
     if not cleaned:
         return None
     return cleaned[:200] or None
+
+
+# P0-9: defensive credential handling.
+#
+# ``str.strip()`` only handles ASCII whitespace. Real-world paste
+# corruption into env-var UIs also brings:
+#   - BOM / zero-width spaces / zero-width joiners / non-joiner
+#   - surrounding ``"`` / ``'`` / ```` ` ```` / ``(`` ``)`` pairs
+#   - other invisible Unicode characters
+#
+# These survive ``str.strip()`` and would be sent verbatim to
+# LinkedIn's /oauth/v2/accessToken, producing ``invalid_client``.
+# The two helpers below strip them before any request is built.
+_UNUSUAL_CHAR_RE = re.compile(
+    "["
+    "​"  # ZERO WIDTH SPACE
+    "‌"  # ZERO WIDTH NON-JOINER
+    "‍"  # ZERO WIDTH JOINER
+    "‎"  # LEFT-TO-RIGHT MARK
+    "‏"  # RIGHT-TO-LEFT MARK
+    "‪"  # LEFT-TO-RIGHT EMBEDDING
+    "‫"  # RIGHT-TO-LEFT EMBEDDING
+    "‬"  # POP DIRECTIONAL FORMATTING
+    "‭"  # LEFT-TO-RIGHT OVERRIDE
+    "‮"  # RIGHT-TO-LEFT OVERRIDE
+    "﻿"  # ZERO WIDTH NO-BREAK SPACE / BOM
+    "⁠"  # WORD JOINER
+    "⁡"  # FUNCTION APPLICATION
+    "⁢"  # INVISIBLE TIMES
+    "⁣"  # INVISIBLE SEPARATOR
+    "⁤"  # INVISIBLE PLUS
+    "]"
+)
+_SURROUNDING_PAIRS = (('"', '"'), ("'", "'"), ("`", "`"), ("(", ")"),
+                      ("[", "]"), ("{", "}"))
+
+
+def _normalize_credential(value: str) -> str:
+    """Return a defensive copy of ``value`` with the most common
+    paste-corruption stripped. Does not touch a string that is
+    already clean."""
+    if not value:
+        return value
+    # 1. Strip ASCII whitespace (defence in depth — config.py
+    # already does this, but we re-strip here so the function is
+    # correct when called from tests or future code paths).
+    cleaned = value.strip()
+    # 2. Strip zero-width / BOM / format characters that survive
+    # ``str.strip()``.
+    cleaned = _UNUSUAL_CHAR_RE.sub("", cleaned)
+    # 3. Peel surrounding wrapping pairs (quotes, backticks,
+    # parens, brackets, braces) so a paste like ``"secret"`` or
+    # ``"secret"`` becomes ``secret``. Walk at most a few times
+    # to peel nested wrapping.
+    for _ in range(3):
+        changed = False
+        for opener, closer in _SURROUNDING_PAIRS:
+            if (
+                len(cleaned) >= 2
+                and cleaned[0] == opener
+                and cleaned[-1] == closer
+            ):
+                cleaned = cleaned[1:-1]
+                changed = True
+        if not changed:
+            break
+    return cleaned
+
+
+def _credential_fingerprint(value: str) -> Optional[str]:
+    """Return a short, NON-REVERSIBLE SHA-256 prefix of the
+    credential so the operator can confirm Railway matches the
+    LinkedIn Developer Portal without ever exposing the secret.
+    Returns ``None`` when the credential is empty.
+    """
+    if not value:
+        return None
+    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()
+    # 16 hex chars = 64 bits — collision-resistant enough to act
+    # as a fingerprint, short enough for an audit-log field.
+    return digest[:16]
+
+
+# P0-9: return the SHAPE of the configured LinkedIn credentials so
+# operators can prove what the running backend saw — without ever
+# leaking the credential value itself.
+def _credential_shape(value: str) -> dict[str, Any]:
+    configured = bool(value)
+    raw = value
+    normalized = _normalize_credential(raw)
+    has_whitespace = raw != raw.strip()
+    has_newline = "\n" in raw or "\r" in raw
+    has_unusual_chars = normalized != raw.strip()
+    return {
+        "configured": configured,
+        "length": len(normalized),
+        "raw_length": len(raw),
+        "had_whitespace": has_whitespace,
+        "had_newline": has_newline,
+        "had_unusual_chars": has_unusual_chars,
+        "fingerprint_sha256_16": _credential_fingerprint(normalized),
+    }
+
+
+def _linkedin_config_shape(settings: Settings) -> dict[str, Any]:
+    """Return a redacted snapshot of the LinkedIn OAuth configuration.
+
+    Captures only:
+      * whether each credential is set,
+      * its length (post-normalization),
+      * whether the raw env-var value had whitespace / newline /
+        non-whitespace paste corruption BEFORE normalization,
+      * a 64-bit SHA-256 fingerprint so the operator can verify
+        Railway matches the LinkedIn Developer Portal without ever
+        exposing the secret,
+      * the redirect URI in full (it is not secret).
+
+    Captures NEVER:
+      * the actual client_id,
+      * the actual client_secret,
+      * the authorization code,
+      * the access/refresh tokens,
+      * the PKCE verifier.
+    """
+    return {
+        "client_id": _credential_shape(settings.linkedin_client_id),
+        "client_secret": _credential_shape(settings.linkedin_client_secret),
+    }
 
 
 def _build_authorize_url(
@@ -236,7 +373,11 @@ async def callback(
             user_id=user_id,
             event_type="LINKEDIN_CONNECT_FAILED",
             description="LinkedIn token request failed",
-            details={"reason": "request_error"},
+            details={
+                "reason": "request_error",
+                "config_shape": _linkedin_config_shape(settings),
+                "redirect_uri": settings.linkedin_redirect_uri,
+            },
         )
         return _redirect("linkedin=error&reason=request_error")
 
@@ -268,7 +409,11 @@ async def callback(
             # the HTTP status code.
             pass
 
-        audit_details: dict[str, Any] = {"status": token_response.status_code}
+        audit_details: dict[str, Any] = {
+            "status": token_response.status_code,
+            "config_shape": _linkedin_config_shape(settings),
+            "redirect_uri": settings.linkedin_redirect_uri,
+        }
         if oauth_error is not None:
             audit_details["error"] = oauth_error
         if oauth_error_description is not None:
