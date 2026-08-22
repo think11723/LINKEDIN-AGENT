@@ -451,7 +451,7 @@ class TestBoundedRetry:
         assert result.error_category == ERROR_CATEGORY_CONFIG
 
     def test_send_email_does_not_crash_on_garbage_recipient(self) -> None:
-        # Empty recipient → config short-circuit (no SMTP attempted).
+        # Empty recipient → recipient error (no SMTP attempted).
         cfg = Settings.__new__(Settings)
         cfg.smtp_host = "smtp.example.com"
         cfg.smtp_port = 587
@@ -468,7 +468,7 @@ class TestBoundedRetry:
             )
         )
         assert result.success is False
-        assert result.error_category == ERROR_CATEGORY_CONFIG
+        assert result.error_category == ERROR_CATEGORY_RECIPIENT
 
 
 # ---------------------------------------------------------------------------

@@ -99,6 +99,23 @@ ERROR_CATEGORY_RECIPIENT = "recipient"
 ERROR_CATEGORY_PAYLOAD = "payload"
 ERROR_CATEGORY_UNKNOWN = "unknown"
 
+#: Hard cap on the email subject line. SMTP / RFC 5322 limits the
+#: subject to 998 octets, but a reasonable production limit is
+#: 256 characters which is well within all major SMTP servers.
+MAX_SUBJECT_CHARS = 256
+
+#: Hard cap on the rendered text body. The legacy builder keeps the
+#: body under ~1 MB; this is a defensive limit to prevent
+#: pathological payloads from leaking through SMTP.
+MAX_TEXT_BODY_CHARS = 500_000
+
+#: Hard cap on the rendered HTML body.
+MAX_HTML_BODY_CHARS = 1_000_000
+
+#: Hard cap on the From address length. RFC 5322 allows long local
+#: parts but production servers rarely accept more than 254.
+MAX_FROM_CHARS = 254
+
 
 def classify_smtp_exception(exc: BaseException) -> Tuple[str, str]:
     """Classify a raw exception into a stable (category, code) pair.
@@ -226,8 +243,51 @@ async def send_email(
     missing), the call short-circuits and returns
     ``success=False`` with category ``config`` and code
     ``email_not_configured`` — the calling workflow is unaffected.
+
+    Defensive input caps (Phase 16):
+    * subject: capped at :data:`MAX_SUBJECT_CHARS`
+    * text_body: capped at :data:`MAX_TEXT_BODY_CHARS`
+    * html_body: capped at :data:`MAX_HTML_BODY_CHARS`
+    * From:    must look like an email address and fit in
+                :data:`MAX_FROM_CHARS`
+    * to:      must be a valid email address (see
+                :func:`is_valid_recipient`)
     """
     cfg = settings or get_settings()
+
+    # Defensive input validation. None of these can be triggered by
+    # the existing call sites (which build the subject / body /
+    # from / to from controlled inputs), but a future caller could.
+    if not subject or not subject.strip():
+        return EmailResult(
+            success=False,
+            error="empty_subject",
+            error_category=ERROR_CATEGORY_PAYLOAD,
+        )
+    if len(subject) > MAX_SUBJECT_CHARS:
+        subject = subject[: MAX_SUBJECT_CHARS - 1] + "…"
+    if len(text_body) > MAX_TEXT_BODY_CHARS:
+        text_body = text_body[:MAX_TEXT_BODY_CHARS]
+    if html_body and len(html_body) > MAX_HTML_BODY_CHARS:
+        html_body = html_body[:MAX_HTML_BODY_CHARS]
+    if cfg.email_from and (
+        not is_valid_recipient(cfg.email_from)
+        or len(cfg.email_from) > MAX_FROM_CHARS
+    ):
+        # Misconfigured From address — refuse to send so we don't
+        # risk spoofing the brand or being silently dropped by the
+        # receiving server.
+        return EmailResult(
+            success=False,
+            error="invalid_from",
+            error_category=ERROR_CATEGORY_CONFIG,
+        )
+    if not to or not is_valid_recipient(to):
+        return EmailResult(
+            success=False,
+            error="invalid_recipient",
+            error_category=ERROR_CATEGORY_RECIPIENT,
+        )
 
     if not (
         cfg.smtp_host

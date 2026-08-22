@@ -120,6 +120,14 @@ async def publish_now(
 
     The runner uses the same underlying UGC POST so behaviour is
     identical between scheduled and on-demand paths.
+
+    Phase 16 / P0: the LinkedIn API call is wrapped in a MongoDB
+    CAS claim so two concurrent ``publish_now`` calls cannot create
+    two real LinkedIn posts. The first call writes a
+    ``publishing_started_at`` marker; the second call sees the
+    marker and returns ``already_published=True`` without contacting
+    LinkedIn. ``mark_published`` is still the final commit that
+    fills in the LinkedIn post id.
     """
     drafts = DraftRepository(get_database())
     draft = await drafts.get(user_id, draft_id)
@@ -132,9 +140,31 @@ async def publish_now(
             linkedin_post_id=draft.get("linkedin_post_id"),
         )
 
+    # CAS claim: only one caller proceeds to the LinkedIn API. If
+    # another caller wins this race, we abort before any external
+    # side-effect (no duplicate LinkedIn post).
+    claimed = await drafts.claim_publish(user_id, draft_id)
+    if not claimed:
+        # Either someone else is publishing it right now, or it was
+        # already published between our initial read and the claim.
+        # Re-read to determine which.
+        fresh = await drafts.get(user_id, draft_id)
+        if fresh and fresh.get("published_at"):
+            return PublishResult(
+                success=True,
+                already_published=True,
+                linkedin_post_id=fresh.get("linkedin_post_id"),
+            )
+        return PublishResult(
+            success=False,
+            error_message="Another publish is in progress.",
+        )
+
     linkedin = LinkedInRepository(get_database())
     tokens = await linkedin.get_decrypted_tokens(user_id)
     if not tokens or not tokens.get("access_token"):
+        # Release the claim so the next attempt can try again.
+        await drafts.clear_publish_claim(user_id, draft_id)
         return PublishResult(
             success=False,
             error_message="LinkedIn account not connected",
@@ -145,6 +175,7 @@ async def publish_now(
         or tokens.get("person_urn")
     ) or (await resolve_person_urn(tokens["access_token"]))
     if not person_urn:
+        await drafts.clear_publish_claim(user_id, draft_id)
         return PublishResult(
             success=False,
             error_message="Could not resolve LinkedIn member URN",
@@ -158,6 +189,7 @@ async def publish_now(
         hashtags=draft.get("hashtags", []) or [],
     )
     if not success:
+        await drafts.clear_publish_claim(user_id, draft_id)
         return PublishResult(success=False, error_message=err)
 
     # Persist the new publish marker (idempotent on the data layer).

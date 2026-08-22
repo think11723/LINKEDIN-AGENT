@@ -235,6 +235,56 @@ class DraftRepository:
             return_document=True,
         )
 
+    async def claim_publish(
+        self, user_id: str, draft_id: str
+    ) -> Optional[dict]:
+        """Phase 16 / P0: atomically claim the right to call
+        LinkedIn. Only one concurrent caller wins. The claim sets
+        ``publishing_started_at``; ``mark_published`` later fills in
+        ``published_at``. If the LinkedIn call fails, the caller
+        MUST call :meth:`clear_publish_claim` so the next attempt
+        can retry.
+
+        Returns the claimed document on success, or ``None`` if
+        another caller already holds the claim.
+        """
+        now = _utcnow()
+        return await self.col.find_one_and_update(
+            {
+                "_id": draft_id,
+                "user_id": user_id,
+                "published_at": None,
+                "publishing_started_at": None,
+            },
+            {
+                "$set": {
+                    "publishing_started_at": now,
+                    "updated_at": now,
+                }
+            },
+            return_document=True,
+        )
+
+    async def clear_publish_claim(
+        self, user_id: str, draft_id: str
+    ) -> None:
+        """Release the publish claim so the next attempt can
+        retry. Idempotent. Only clears the claim if the draft is
+        still NOT published (preserves the final state once
+        ``mark_published`` has run).
+        """
+        await self.col.update_one(
+            {
+                "_id": draft_id,
+                "user_id": user_id,
+                "published_at": None,
+            },
+            {
+                "$unset": {"publishing_started_at": ""},
+                "$set": {"updated_at": _utcnow()},
+            },
+        )
+
     async def list_published(
         self,
         user_id: str,
