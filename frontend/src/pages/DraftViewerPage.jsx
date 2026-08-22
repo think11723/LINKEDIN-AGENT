@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft,
   CalendarClock,
@@ -10,37 +11,42 @@ import {
   Send,
   Save,
   X,
-  ExternalLink,
-  Link2,
-  Check,
-  AlertCircle,
-  BadgeCheck,
-  Inbox,
-  Sparkles,
+  CheckCircle2,
+  Bookmark,
+  Github,
+  Globe,
   FileText,
+  Sparkles,
+  BarChart3,
+  Clock,
 } from 'lucide-react';
 
 import { useApi } from '../services/api/backend.js';
 import { useDrafts } from '../context/DraftsContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardFooter,
-} from '../components/ui/Card.jsx';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/Card.jsx';
 import { Button } from '../components/ui/Button.jsx';
 import { Input, Textarea, Field } from '../components/ui/Input.jsx';
 import { Badge } from '../components/ui/Badge.jsx';
-import { PageHeader } from '../components/ui/PageHeader.jsx';
 import { ConfirmDialog } from '../components/ConfirmDialog.jsx';
-import { ErrorBanner, Spinner, EmptyState, Skeleton } from '../components/ui/Feedback.jsx';
-import { formatDateTime } from '../utils/date.js';
+import { EmptyState, ErrorBanner, Skeleton } from '../components/ui/Feedback.jsx';
+import { MotionPage } from '../components/ui/MotionPage.jsx';
+import { QualityRing } from '../components/ui/QualityRing.jsx';
 import { LinkedInPreview } from '../components/ui/LinkedInPreview.jsx';
-import { SourcePreviewCard, SourceTypeChip } from '../components/ui/SourcePreviewCard.jsx';
-import { DRAFT_STATUS_TONE, DRAFT_STATUS_LABEL, SOURCE_TONE, SOURCE_TYPE_LABEL } from '../utils/design.js';
+import { SourcePreviewCard } from '../components/ui/SourcePreviewCard.jsx';
+import { DRAFT_STATUS_TONE, DRAFT_STATUS_LABEL } from '../utils/design.js';
+import { formatDateTime } from '../utils/date.js';
+import { cn } from '../utils/cn.js';
+
+function wordCountOf(s) {
+  return (s || '').split(/\s+/).filter(Boolean).length;
+}
+
+function readingTimeMinutes(s) {
+  const words = wordCountOf(s);
+  // Average reading speed ≈ 200 wpm.
+  return Math.max(1, Math.round(words / 200));
+}
 
 export default function DraftViewerPage() {
   const { id } = useParams();
@@ -56,7 +62,7 @@ export default function DraftViewerPage() {
 
   const [serverDraft, setServerDraft] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [err, setErr] = useState(null);
 
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
@@ -73,7 +79,7 @@ export default function DraftViewerPage() {
 
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const [publishError, setPublishError] = useState(null);
+  const [publishErr, setPublishErr] = useState(null);
   const [publishResult, setPublishResult] = useState(null);
 
   const draft = useMemo(() => {
@@ -88,13 +94,13 @@ export default function DraftViewerPage() {
     try {
       const data = await api.getDraft(id);
       setServerDraft(data);
-      setError(null);
-    } catch (err) {
-      if (err?.status === 404) {
+      setErr(null);
+    } catch (e) {
+      if (e?.status === 404) {
         setServerDraft(null);
-        setError(null);
+        setErr(null);
       } else {
-        setError(err);
+        setErr(e);
       }
     } finally {
       setLoading(false);
@@ -105,7 +111,7 @@ export default function DraftViewerPage() {
     setEditing(false);
     setScheduleTime('');
     setPublishResult(null);
-    setPublishError(null);
+    setPublishErr(null);
     loadDraft();
   }, [loadDraft]);
 
@@ -128,13 +134,6 @@ export default function DraftViewerPage() {
       cancelled = true;
     };
   }, [api, draft?.id, draft?.title]);
-
-  const isPublished = Boolean(draft?.published_at);
-  const isEditing = editing;
-  const sourceMeta = draft?.source_metadata || null;
-  const sourceType = sourceMeta?.source_type || sourceMeta?.adapter || null;
-  const status = draft?.status || 'draft';
-  const statusTone = DRAFT_STATUS_TONE[status] || DRAFT_STATUS_TONE.draft;
 
   function startEdit() {
     if (!draft) return;
@@ -161,8 +160,8 @@ export default function DraftViewerPage() {
       toast.success('Draft saved.');
       setEditing(false);
       await loadDraft();
-    } catch (err) {
-      toast.error('Save failed', err?.message);
+    } catch (e) {
+      toast.error('Save failed', e?.message);
     } finally {
       setSaving(false);
     }
@@ -177,8 +176,8 @@ export default function DraftViewerPage() {
       toast.success('Draft deleted.');
       setConfirmDelete(false);
       navigate('/drafts');
-    } catch (err) {
-      toast.error('Delete failed', err?.message);
+    } catch (e) {
+      toast.error('Delete failed', e?.message);
     } finally {
       setDeleting(false);
       setConfirmDelete(false);
@@ -216,8 +215,8 @@ export default function DraftViewerPage() {
       toast.success('Scheduled.');
       setScheduleTime('');
       await loadDraft();
-    } catch (err) {
-      toast.error('Schedule failed', err?.message);
+    } catch (e) {
+      toast.error('Schedule failed', e?.message);
     } finally {
       setScheduling(false);
     }
@@ -230,8 +229,8 @@ export default function DraftViewerPage() {
       toast.success('Schedule cancelled.');
       setExistingJobId(null);
       await loadDraft();
-    } catch (err) {
-      toast.error('Cancel failed', err?.message);
+    } catch (e) {
+      toast.error('Cancel failed', e?.message);
     } finally {
       setConfirmScheduleCancel(false);
     }
@@ -240,22 +239,22 @@ export default function DraftViewerPage() {
   async function handlePublishNow() {
     if (!id) return;
     setPublishing(true);
-    setPublishError(null);
+    setPublishErr(null);
     try {
       const res = await api.publishDraft(id);
       setPublishResult(res);
       setPublishOpen(false);
       toast.success('Published to LinkedIn.');
       await loadDraft();
-    } catch (err) {
-      setPublishError(err);
-      const code = err?.code;
+    } catch (e) {
+      setPublishErr(e);
+      const code = e?.code;
       if (code === 'INTERNAL_SERVER_ERROR') {
-        toast.error('Publish failed', 'LinkedIn rejected the post. See the error above.');
-      } else if (err?.status === 400) {
-        toast.error('Cannot publish', err?.message);
+        toast.error('Publish failed', 'LinkedIn rejected the post.');
+      } else if (e?.status === 400) {
+        toast.error('Cannot publish', e?.message);
       } else {
-        toast.error('Publish failed', err?.message);
+        toast.error('Publish failed', e?.message);
       }
     } finally {
       setPublishing(false);
@@ -291,32 +290,47 @@ export default function DraftViewerPage() {
 
   if (loading && !draft) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-72" />
-      </div>
+      <MotionPage className="space-y-6 p-4 md:p-6 lg:p-8">
+        <div className="space-y-3">
+          <Skeleton className="h-7 w-64" />
+          <Skeleton className="h-4 w-96" />
+        </div>
+        <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+          <Skeleton className="h-96" />
+          <Skeleton className="h-96" />
+        </div>
+      </MotionPage>
     );
   }
 
   if (!draft) {
     return (
-      <div className="space-y-4 animate-fadeIn">
-        <ErrorBanner error={error} onRetry={loadDraft} />
+      <MotionPage className="space-y-6 p-4 md:p-6 lg:p-8">
+        <ErrorBanner error={err} onRetry={loadDraft} />
         <EmptyState
-          icon={<Inbox className="h-5 w-5" />}
+          icon={<FileText className="h-5 w-5" />}
           title="Draft not found"
           description="It may have been deleted or never existed."
           action={
             <Button onClick={() => navigate('/drafts')}>Back to drafts</Button>
           }
         />
-      </div>
+      </MotionPage>
     );
   }
 
+  const status = draft.status || 'draft';
+  const statusTone = DRAFT_STATUS_TONE[status] || DRAFT_STATUS_TONE.draft;
+  const sourceMeta = draft.source_metadata || {};
+  const sourceType = sourceMeta.source_type;
+  const sourceUrl = draft.source_url;
+  const words = wordCountOf(draft.content);
+  const readMin = readingTimeMinutes(draft.content);
+  const isPublished = Boolean(draft.published_at);
+
   return (
-    <div className="space-y-6 animate-fadeIn">
-      <div className="flex items-center justify-between">
+    <MotionPage className="space-y-6 p-4 md:p-6 lg:p-8">
+      <div className="flex flex-wrap items-center gap-3">
         <Link
           to="/drafts"
           className="inline-flex items-center gap-1.5 text-sm text-text-muted transition hover:text-zinc-100"
@@ -324,14 +338,14 @@ export default function DraftViewerPage() {
           <ArrowLeft className="h-3.5 w-3.5" />
           Back to Drafts
         </Link>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           <Button
             size="sm"
             variant="ghost"
             onClick={() => handleCopy('content')}
             leftIcon={<Copy className="h-3.5 w-3.5" />}
           >
-            Copy content
+            Copy
           </Button>
           <Button
             size="sm"
@@ -346,7 +360,7 @@ export default function DraftViewerPage() {
               size="sm"
               variant="secondary"
               onClick={startEdit}
-              disabled={isEditing}
+              disabled={editing}
               leftIcon={<Edit3 className="h-3.5 w-3.5" />}
             >
               Edit
@@ -364,35 +378,44 @@ export default function DraftViewerPage() {
         </div>
       </div>
 
-      <PageHeader
-        eyebrow="Workspace"
-        title={draft.title || 'Untitled draft'}
-        subtitle={draft.topic ? `Topic: ${draft.topic}` : undefined}
-        actions={
-          <Badge tone={statusTone.label.toLowerCase()} size="lg" withDot>
+      <header className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone={statusTone.label.toLowerCase()} size="md" withDot>
             {DRAFT_STATUS_LABEL[status] || status}
-            {isPublished ? ' · LinkedIn' : null}
           </Badge>
-        }
-      />
+          {sourceType && !sourceUrl ? null : null}
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-0.5 text-[11px] uppercase tracking-[0.12em] text-text-muted">
+            <Clock className="h-3 w-3" /> {readMin} min read
+          </span>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-0.5 text-[11px] uppercase tracking-[0.12em] text-text-muted">
+            <BarChart3 className="h-3 w-3" /> {words} words
+          </span>
+        </div>
+        <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+          {draft.title || 'Untitled draft'}
+        </h1>
+        {draft.topic ? (
+          <p className="text-sm text-text-secondary">Topic: {draft.topic}</p>
+        ) : null}
+      </header>
 
-      {sourceType || draft.source_url ? (
+      <ErrorBanner error={err} onRetry={loadDraft} />
+
+      {sourceUrl ? (
         <SourcePreviewCard
           compact
           sourceType={sourceType || 'generic_webpage'}
-          title={sourceMeta?.full_name || sourceMeta?.description || SOURCE_TYPE_LABEL[sourceType] || 'Source'}
-          description={sourceMeta?.description || sourceMeta?.readme_summary || ''}
-          summary={sourceMeta?.summary || ''}
-          url={draft.source_url}
-          finalUrl={sourceMeta?.canonical_url || draft.source_url}
+          title={sourceMeta.full_name || sourceMeta.title || sourceMeta.description || 'Source'}
+          description={sourceMeta.description || ''}
+          summary={sourceMeta.summary || ''}
+          url={sourceUrl}
+          finalUrl={sourceMeta.canonical_url || sourceUrl}
         />
       ) : null}
 
-      <ErrorBanner error={error} onRetry={loadDraft} />
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-6">
-          {isEditing ? (
+      <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+        <div className="space-y-4">
+          {editing ? (
             <Card>
               <CardHeader>
                 <CardTitle>Edit draft</CardTitle>
@@ -409,12 +432,17 @@ export default function DraftViewerPage() {
                 <Field id="edit-content" label="Content" required>
                   <Textarea
                     id="edit-content"
-                    rows={10}
+                    rows={12}
+                    className="font-mono"
                     value={editContent}
                     onChange={(e) => setEditContent(e.target.value)}
                   />
                 </Field>
-                <Field id="edit-hashtags" label="Hashtags" hint="Space-separated. # is added automatically.">
+                <Field
+                  id="edit-hashtags"
+                  label="Hashtags"
+                  hint="Space-separated. # is added automatically."
+                >
                   <Input
                     id="edit-hashtags"
                     value={editHashtags}
@@ -444,15 +472,10 @@ export default function DraftViewerPage() {
           ) : (
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>LinkedIn preview</CardTitle>
-                    <CardDescription>
-                      How this post will look when published.
-                    </CardDescription>
-                  </div>
-                  <BadgeCheck className="h-4 w-4 text-sky-400" />
-                </div>
+                <CardTitle>LinkedIn preview</CardTitle>
+                <CardDescription>
+                  How this post will look when published.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <LinkedInPreview
@@ -461,11 +484,25 @@ export default function DraftViewerPage() {
                   content={draft.content}
                   hashtags={draft.hashtags || []}
                   sourceAttribution={
-                    draft.source_url
+                    sourceUrl
                       ? {
-                          label: SOURCE_TYPE_LABEL[sourceType] || 'Source',
-                          title: sourceMeta?.full_name || sourceMeta?.description,
-                          url: sourceMeta?.canonical_url || draft.source_url,
+                          label:
+                            sourceType === 'github_repository'
+                              ? 'GitHub Repository'
+                              : sourceType === 'github_readme'
+                              ? 'GitHub README'
+                              : sourceType === 'blog_article'
+                              ? 'Blog Article'
+                              : sourceType === 'documentation'
+                              ? 'Documentation'
+                              : sourceType === 'product_page'
+                              ? 'Product Announcement'
+                              : 'Source',
+                          title:
+                            sourceMeta.full_name ||
+                            sourceMeta.title ||
+                            sourceMeta.description,
+                          url: sourceMeta.canonical_url || sourceUrl,
                         }
                       : null
                   }
@@ -477,8 +514,13 @@ export default function DraftViewerPage() {
           {!isPublished ? (
             <Card>
               <CardHeader>
-                <CardTitle>Schedule</CardTitle>
-                <CardDescription>Pick a date and time. We send a TZ-aware ISO string.</CardDescription>
+                <CardTitle className="flex items-center gap-2">
+                  <CalendarClock className="h-4 w-4 text-text-secondary" />
+                  Schedule
+                </CardTitle>
+                <CardDescription>
+                  Pick a date and time. We send a TZ-aware ISO string.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <Input
@@ -497,7 +539,7 @@ export default function DraftViewerPage() {
                     {existingJobId ? (
                       <Button
                         size="sm"
-                        variant="outline"
+                        variant="secondary"
                         onClick={() => setConfirmScheduleCancel(true)}
                         loading={scheduling}
                       >
@@ -523,6 +565,48 @@ export default function DraftViewerPage() {
         <div className="space-y-4">
           <Card>
             <CardHeader>
+              <CardTitle>Draft quality</CardTitle>
+              <CardDescription>
+                Reviewer evaluation (when scores are present).
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {draft.review_score !== undefined && draft.review_score !== null ? (
+                <div className="flex items-center gap-4">
+                  <QualityRing
+                    score={Math.round(draft.review_score || 0)}
+                    max={10}
+                    size={88}
+                    label={`Score ${draft.review_score} of 10`}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-white">
+                      {draft.review_score >= 8
+                        ? 'Strong'
+                        : draft.review_score >= 6
+                        ? 'Good'
+                        : 'Needs work'}
+                    </div>
+                    <div className="text-xs text-text-muted">
+                      Reviewer score
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm text-text-muted">
+                  No reviewer score available for this draft yet.
+                </div>
+              )}
+              {draft.review_feedback ? (
+                <p className="mt-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-sm text-text-secondary">
+                  {draft.review_feedback}
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
@@ -532,11 +616,6 @@ export default function DraftViewerPage() {
                 </Badge>
                 {isPublished ? <Badge tone="success" size="sm">Published</Badge> : null}
               </DetailRow>
-              <DetailRow label="Review">
-                <span className="text-zinc-100">
-                  {typeof draft.reviewScore === 'number' ? `${draft.reviewScore}/10` : '—'}
-                </span>
-              </DetailRow>
               <DetailRow label="Created">
                 <span className="text-zinc-100">{formatDateTime(draft.createdAt || draft.created_at)}</span>
               </DetailRow>
@@ -545,9 +624,7 @@ export default function DraftViewerPage() {
               </DetailRow>
               {draft.publishedAt || draft.published_at ? (
                 <DetailRow label="Published">
-                  <span className="text-zinc-100">
-                    {formatDateTime(draft.publishedAt || draft.published_at)}
-                  </span>
+                  <span className="text-zinc-100">{formatDateTime(draft.publishedAt || draft.published_at)}</span>
                 </DetailRow>
               ) : null}
               {draft.linkedinPostId || draft.linkedin_post_id ? (
@@ -559,41 +636,6 @@ export default function DraftViewerPage() {
               ) : null}
             </CardContent>
           </Card>
-
-          {draft.review_feedback ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>Reviewer feedback</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-text-secondary">{draft.review_feedback}</p>
-              </CardContent>
-            </Card>
-          ) : null}
-
-          {draft.metadata?.llm || draft.llm ? (
-            <Card variant="muted">
-              <CardContent className="space-y-2 text-xs text-text-muted">
-                <div className="font-semibold text-text-secondary">Generated by</div>
-                <div>
-                  Writer:{' '}
-                  <span className="text-zinc-200">
-                    {(draft.metadata?.llm || draft.llm).writer_provider}/
-                    {(draft.metadata?.llm || draft.llm).writer_model}
-                  </span>
-                </div>
-                {draft.metadata?.llm?.reviewer_provider ? (
-                  <div>
-                    Reviewer:{' '}
-                    <span className="text-zinc-200">
-                      {draft.metadata.llm.reviewer_provider}/
-                      {draft.metadata.llm.reviewer_model}
-                    </span>
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-          ) : null}
 
           {!isPublished ? (
             <Card>
@@ -617,17 +659,22 @@ export default function DraftViewerPage() {
           {publishResult ? (
             <Card>
               <CardHeader>
-                <CardTitle>Published</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-300" />
+                  Published
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm text-zinc-300">
                 <div>
                   LinkedIn post id:{' '}
-                  <span className="font-mono text-zinc-200">
+                  <span className="font-mono text-zinc-100">
                     {publishResult.linkedin_post_id}
                   </span>
                 </div>
                 {publishResult.published_at ? (
-                  <div>Published at: {formatDateTime(publishResult.published_at)}</div>
+                  <div>
+                    Published at: {formatDateTime(publishResult.published_at)}
+                  </div>
                 ) : null}
               </CardContent>
             </Card>
@@ -669,16 +716,16 @@ export default function DraftViewerPage() {
         onConfirm={handlePublishNow}
         onCancel={() => setPublishOpen(false)}
       >
-        {publishError ? (
-          <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/[0.06] p-3 text-sm text-rose-200">
+        {publishErr ? (
+          <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/[0.08] p-3 text-sm text-rose-200">
             <div className="flex items-center gap-2 font-medium">
-              <AlertCircle className="h-4 w-4" /> LinkedIn rejected the post.
+              <X className="h-4 w-4" /> LinkedIn rejected the post.
             </div>
-            <div className="mt-1 text-rose-200/80">{publishError.message}</div>
+            <div className="mt-1 text-rose-200/80">{publishErr.message}</div>
           </div>
         ) : null}
       </ConfirmDialog>
-    </div>
+    </MotionPage>
   );
 }
 

@@ -1,5 +1,6 @@
-import { cn } from '../../utils/cn.js';
 import { AlertCircle, CheckCircle2, Info, AlertTriangle } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { cn } from '../../utils/cn.js';
 
 export function Spinner({ className, size = 'md' }) {
   const sizeMap = {
@@ -36,14 +37,17 @@ export function EmptyState({
 }) {
   const sizeMap = {
     sm: { padding: 'p-6', iconBox: 'h-10 w-10', iconSize: 'h-5 w-5' },
-    md: { padding: 'p-8', iconBox: 'h-12 w-12', iconSize: 'h-6 w-6' },
-    lg: { padding: 'p-10', iconBox: 'h-14 w-14', iconSize: 'h-7 w-7' },
+    md: { padding: 'p-8', iconBox: 'h-14 w-14', iconSize: 'h-7 w-7' },
+    lg: { padding: 'p-10', iconBox: 'h-16 w-16', iconSize: 'h-8 w-8' },
   };
   const s = sizeMap[size] ?? sizeMap.md;
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
       className={cn(
-        'flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 bg-white/[0.015] text-center',
+        'glass-card flex flex-col items-center justify-center rounded-2xl text-center',
         s.padding,
         className,
       )}
@@ -51,7 +55,7 @@ export function EmptyState({
       {icon ? (
         <div
           className={cn(
-            'mb-3 inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-text-secondary',
+            'mb-3 inline-flex items-center justify-center rounded-2xl border border-white/[0.08] bg-gradient-brand-soft text-brand-300',
             s.iconBox,
           )}
           aria-hidden
@@ -60,56 +64,68 @@ export function EmptyState({
         </div>
       ) : null}
       {title ? (
-        <div className="text-sm font-semibold text-zinc-100">{title}</div>
+        <div className="text-base font-semibold text-white">{title}</div>
       ) : null}
       {description ? (
-        <div className="mt-1 max-w-md text-sm text-text-secondary">{description}</div>
+        <div className="mt-1 max-w-md text-sm text-text-secondary">
+          {description}
+        </div>
       ) : null}
-      {action ? <div className="mt-4">{action}</div> : null}
-    </div>
+      {action ? <div className="mt-5">{action}</div> : null}
+    </motion.div>
   );
 }
 
 const bannerTones = {
   danger: {
-    wrap: 'border-rose-500/30 bg-rose-500/[0.06]',
-    icon: 'text-rose-300',
+    wrap: 'border-rose-500/30 bg-rose-500/[0.08]',
     title: 'text-rose-100',
     body: 'text-rose-200/80',
+    icon: 'text-rose-300',
     Icon: AlertCircle,
   },
   warning: {
-    wrap: 'border-amber-500/30 bg-amber-500/[0.06]',
-    icon: 'text-amber-300',
+    wrap: 'border-amber-500/30 bg-amber-500/[0.08]',
     title: 'text-amber-100',
     body: 'text-amber-200/80',
+    icon: 'text-amber-300',
     Icon: AlertTriangle,
   },
   success: {
-    wrap: 'border-emerald-500/30 bg-emerald-500/[0.06]',
-    icon: 'text-emerald-300',
+    wrap: 'border-emerald-500/30 bg-emerald-500/[0.08]',
     title: 'text-emerald-100',
     body: 'text-emerald-200/80',
+    icon: 'text-emerald-300',
     Icon: CheckCircle2,
   },
   info: {
-    wrap: 'border-sky-500/30 bg-sky-500/[0.06]',
-    icon: 'text-sky-300',
+    wrap: 'border-sky-500/30 bg-sky-500/[0.08]',
     title: 'text-sky-100',
     body: 'text-sky-200/80',
+    icon: 'text-sky-300',
     Icon: Info,
   },
 };
 
-export function ErrorBanner({ error, onRetry, tone = 'danger', title, className }) {
+export function ErrorBanner({
+  error,
+  onRetry,
+  tone = 'danger',
+  title,
+  className,
+}) {
   if (!error) return null;
   const t = bannerTones[tone] ?? bannerTones.danger;
   const Icon = t.Icon;
-  const message = typeof error === 'string' ? error : error?.message || 'Something went wrong.';
+  const message =
+    typeof error === 'string' ? error : error?.message || 'Something went wrong.';
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
       className={cn(
-        'flex items-start gap-3 rounded-xl border p-3 text-sm',
+        'flex items-start gap-3 rounded-2xl border p-4 text-sm',
         t.wrap,
         className,
       )}
@@ -117,7 +133,7 @@ export function ErrorBanner({ error, onRetry, tone = 'danger', title, className 
     >
       <Icon className={cn('mt-0.5 h-4 w-4 shrink-0', t.icon)} aria-hidden />
       <div className="flex-1">
-        {title ? <div className={cn('font-medium', t.title)}>{title}</div> : null}
+        {title ? <div className={cn('font-semibold', t.title)}>{title}</div> : null}
         <div className={t.body}>{message}</div>
       </div>
       {onRetry ? (
@@ -125,15 +141,14 @@ export function ErrorBanner({ error, onRetry, tone = 'danger', title, className 
           type="button"
           onClick={onRetry}
           className={cn(
-            'shrink-0 rounded-lg border px-3 py-1 text-xs transition',
+            'shrink-0 rounded-xl border px-3 py-1 text-xs font-medium transition hover:opacity-80',
             t.wrap,
             t.title,
-            'hover:opacity-80',
           )}
         >
           Retry
         </button>
       ) : null}
-    </div>
+    </motion.div>
   );
 }

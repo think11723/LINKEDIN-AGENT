@@ -1,23 +1,34 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowRight, Search, Trash2, NotebookPen, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  ArrowRight,
+  Search,
+  Trash2,
+  NotebookPen,
+  LayoutGrid,
+  List,
+  Plus,
+  Sparkles,
+  CalendarClock,
+  Inbox,
+} from 'lucide-react';
 
 import { useApi } from '../services/api/backend.js';
-import { useAuth } from '../context/AuthContext.jsx';
 import { useDrafts } from '../context/DraftsContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/Card.jsx';
 import { Button } from '../components/ui/Button.jsx';
-import { Input, Select, Field } from '../components/ui/Input.jsx';
+import { Input, Select } from '../components/ui/Input.jsx';
 import { Badge } from '../components/ui/Badge.jsx';
-import { PageHeader } from '../components/ui/PageHeader.jsx';
 import { ConfirmDialog } from '../components/ConfirmDialog.jsx';
-import { EmptyState, ErrorBanner, Skeleton } from '../components/ui/Feedback.jsx';
+import { EmptyState, ErrorBanner, Skeleton, Spinner } from '../components/ui/Feedback.jsx';
+import { MotionPage } from '../components/ui/MotionPage.jsx';
+import { DRAFT_STATUS_TONE, DRAFT_STATUS_LABEL, SOURCE_TONE } from '../utils/design.js';
 import { formatDateTime } from '../utils/date.js';
-import { DRAFT_STATUS_TONE, DRAFT_STATUS_LABEL, SOURCE_TONE, SOURCE_TYPE_LABEL } from '../utils/design.js';
-import { SourceTypeChip } from '../components/ui/SourcePreviewCard.jsx';
+import { cn } from '../utils/cn.js';
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 12;
 
 const STATUS_OPTIONS = [
   { value: 'all', label: 'All statuses' },
@@ -36,40 +47,38 @@ export default function DraftsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const api = useApi();
-  const { status: authStatus } = useAuth();
-  const { setDrafts, drafts, setCurrentDraft, deleteDraft } = useDrafts();
+  const { setDrafts, drafts, deleteDraft } = useDrafts();
   const { toast } = useToast();
 
   const [search, setSearch] = useState(() => searchParams.get('search') || '');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortBy, setSortBy] = useState('updated');
+  const [view, setView] = useState('grid');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [nextPage, setNextPage] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [deletingId, setDeletingId] = useState(null);
+  const [err, setErr] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
-    if (authStatus !== 'authenticated') return;
     setLoading(true);
     try {
       const params = { page, page_size: PAGE_SIZE, sort_by: sortBy };
       if (statusFilter !== 'all') params.status = statusFilter;
       if (search.trim()) params.search = search.trim();
       const data = await api.listDrafts(params);
-      const items = Array.isArray(data?.items) ? data.items : [];
-      setDrafts(items);
+      setDrafts(Array.isArray(data?.items) ? data.items : []);
       setTotal(data?.total ?? 0);
       setNextPage(data?.next_page ?? null);
-      setError(null);
-    } catch (err) {
-      setError(err);
+      setErr(null);
+    } catch (e) {
+      setErr(e);
     } finally {
       setLoading(false);
     }
-  }, [api, authStatus, search, statusFilter, page, sortBy, setDrafts]);
+  }, [api, search, statusFilter, page, sortBy, setDrafts]);
 
   useEffect(() => {
     load();
@@ -79,140 +88,165 @@ export default function DraftsPage() {
     setPage(1);
   }, [search, statusFilter, sortBy]);
 
-  const pageItems = drafts;
-
   async function handleDelete() {
     if (!confirmId) return;
-    setDeletingId(confirmId);
+    setDeleting(true);
     try {
       await api.deleteDraft(confirmId);
       deleteDraft(confirmId);
       toast.success('Draft deleted.');
       setConfirmId(null);
       await load();
-    } catch (err) {
-      toast.error('Delete failed', err?.message);
+    } catch (e) {
+      toast.error('Delete failed', e?.message);
     } finally {
-      setDeletingId(null);
+      setDeleting(false);
+      setConfirmId(null);
     }
   }
 
-  function handleOpen(id) {
-    setCurrentDraft(id);
-    navigate(`/drafts/${id}`);
-  }
-
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pageItems = drafts;
 
   return (
-    <div className="space-y-6 animate-fadeIn">
-      <PageHeader
-        eyebrow="Workspace"
-        title="Draft Library"
-        subtitle="Search, filter, edit, and publish your drafts."
-        actions={
-          <Button
-            variant="brand"
-            size="md"
-            onClick={() => navigate('/create')}
-            rightIcon={<ArrowRight className="h-4 w-4" />}
-          >
-            Generate new draft
-          </Button>
-        }
-      />
+    <MotionPage className="space-y-6 p-4 md:p-6 lg:p-8">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1 text-[11px] uppercase tracking-[0.14em] text-text-secondary">
+            <NotebookPen className="h-3 w-3 text-brand-300" />
+            Draft Library
+          </div>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+            <span className="text-text-secondary">Your</span>{' '}
+            <span className="gradient-text">drafts</span>
+          </h1>
+          <p className="mt-1 text-sm text-text-secondary">
+            {loading && total === 0
+              ? 'Loading your drafts…'
+              : `${total} draft${total === 1 ? '' : 's'} in your library`}
+          </p>
+        </div>
+        <Button
+          variant="brand"
+          size="md"
+          onClick={() => navigate('/create')}
+          leftIcon={<Plus className="h-4 w-4" />}
+        >
+          New Draft
+        </Button>
+      </header>
+
+      <ErrorBanner error={err} onRetry={load} />
 
       <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle>Filters</CardTitle>
-              <CardDescription>
-                {loading ? 'Loading drafts…' : `Showing ${total} draft${total === 1 ? '' : 's'}.`}
-              </CardDescription>
-            </div>
+        <CardContent className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+            <Input
+              className="pl-9 h-10"
+              placeholder="Search drafts by title, topic, or content…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search drafts"
+            />
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 md:grid-cols-[1fr_180px_180px]">
-            <Field id="drafts-search" label="Search">
-              <Input
-                id="drafts-search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search drafts"
-                leftIcon={<Search className="h-3.5 w-3.5" />}
-              />
-            </Field>
-            <Field id="drafts-status" label="Status">
-              <Select
-                id="drafts-status"
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
-              >
-                {STATUS_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field id="drafts-sort" label="Sort">
-              <Select
-                id="drafts-sort"
-                value={sortBy}
-                onChange={(event) => setSortBy(event.target.value)}
-              >
-                {SORT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+          <Select
+            className="lg:w-44"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            aria-label="Filter by status"
+          >
+            {STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </Select>
+          <Select
+            className="lg:w-44"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            aria-label="Sort drafts"
+          >
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </Select>
+          <div className="glass-inset inline-flex items-center gap-1 rounded-2xl p-1">
+            <ViewToggle
+              active={view === 'grid'}
+              onClick={() => setView('grid')}
+              icon={<LayoutGrid className="h-4 w-4" />}
+              label="Grid"
+            />
+            <ViewToggle
+              active={view === 'list'}
+              onClick={() => setView('list')}
+              icon={<List className="h-4 w-4" />}
+              label="List"
+            />
           </div>
         </CardContent>
       </Card>
 
-      <ErrorBanner error={error} onRetry={load} />
-
-      {loading && !pageItems.length ? (
-        <div className="grid gap-3 md:grid-cols-2">
-          {Array.from({ length: 4 }).map((_, idx) => (
+      {loading && pageItems.length === 0 ? (
+        <div
+          className={cn(
+            'grid gap-4',
+            view === 'grid'
+              ? 'sm:grid-cols-2 lg:grid-cols-3'
+              : 'grid-cols-1'
+          )}
+        >
+          {Array.from({ length: 6 }).map((_, idx) => (
             <Skeleton key={idx} className="h-44" />
           ))}
         </div>
-      ) : pageItems.length ? (
-        <div className="grid gap-3 md:grid-cols-2">
-          {pageItems.map((draft) => (
-            <DraftCard
-              key={draft.id}
-              draft={draft}
-              onOpen={() => handleOpen(draft.id)}
-              onDelete={() => setConfirmId(draft.id)}
-            />
-          ))}
-        </div>
+      ) : pageItems.length === 0 ? (
+        <EmptyState
+          icon={<Inbox className="h-5 w-5" />}
+          title="No drafts match"
+          description="Generate a new draft or clear your filters."
+          action={
+            <Button
+              variant="brand"
+              size="sm"
+              onClick={() => navigate('/create')}
+              leftIcon={<Sparkles className="h-4 w-4" />}
+            >
+              Create a draft
+            </Button>
+          }
+        />
       ) : (
-        <Card>
-          <CardContent>
-            <EmptyState
-              icon={<NotebookPen className="h-5 w-5" />}
-              title="No drafts yet"
-              description="Create your first LinkedIn post from a topic or a public URL."
-              action={
-                <Button
-                  variant="brand"
-                  size="md"
-                  onClick={() => navigate('/create')}
-                  leftIcon={<Sparkles className="h-4 w-4" />}
-                >
-                  Create Post
-                </Button>
-              }
-            />
-          </CardContent>
-        </Card>
+        <AnimatePresence mode="popLayout">
+          <motion.div
+            key={`${view}-${page}-${sortBy}-${statusFilter}-${search}`}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.24 }}
+            className={cn(
+              'grid gap-4',
+              view === 'grid'
+                ? 'sm:grid-cols-2 lg:grid-cols-3'
+                : 'grid-cols-1'
+            )}
+          >
+            {pageItems.map((draft, idx) => (
+              <DraftCard
+                key={draft.id}
+                draft={draft}
+                view={view}
+                index={idx}
+                onOpen={() => navigate(`/drafts/${draft.id}`)}
+                onDelete={() => setConfirmId(draft.id)}
+              />
+            ))}
+          </motion.div>
+        </AnimatePresence>
       )}
 
       {totalPages > 1 ? (
@@ -223,19 +257,17 @@ export default function DraftsPage() {
           <div className="flex gap-2">
             <Button
               size="sm"
-              variant="outline"
+              variant="secondary"
               disabled={page === 1}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              leftIcon={<ChevronLeft className="h-3.5 w-3.5" />}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
               Previous
             </Button>
             <Button
               size="sm"
-              variant="outline"
+              variant="secondary"
               disabled={nextPage === null}
-              onClick={() => setPage((current) => current + 1)}
-              rightIcon={<ChevronRight className="h-3.5 w-3.5" />}
+              onClick={() => setPage((p) => p + 1)}
             >
               Next
             </Button>
@@ -249,104 +281,117 @@ export default function DraftsPage() {
         description="The draft and its history will be removed. This cannot be undone."
         confirmLabel="Delete"
         danger
-        confirming={Boolean(deletingId)}
+        confirming={deleting}
         onConfirm={handleDelete}
         onCancel={() => setConfirmId(null)}
       />
-    </div>
+    </MotionPage>
   );
 }
 
-function DraftCard({ draft, onOpen, onDelete }) {
+function Boolean(value) {
+  return Boolean(value);
+}
+
+function ViewToggle({ active, onClick, icon, label }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      title={label}
+      className={cn(
+        'inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition',
+        active
+          ? 'bg-white/[0.08] text-zinc-100 shadow-sm'
+          : 'hover:bg-white/[0.04] hover:text-zinc-200'
+      )}
+    >
+      {icon}
+    </button>
+  );
+}
+
+function DraftCard({ draft, view, index, onOpen, onDelete }) {
   const status = draft.status || 'draft';
   const statusTone = DRAFT_STATUS_TONE[status] || DRAFT_STATUS_TONE.draft;
   const sourceType = draft.source_metadata?.source_type;
-  const sourceMeta = draft.source_metadata || {};
-  const sourceLabel = sourceType ? SOURCE_TYPE_LABEL[sourceType] : null;
-  const sourceSummary =
-    sourceMeta.description ||
-    sourceMeta.readme_summary ||
-    sourceMeta.summary ||
-    '';
+  const sourceTone = sourceType ? SOURCE_TONE[sourceType] : null;
   const preview = (draft.content || '').slice(0, 200).replace(/\s+/g, ' ').trim();
+  const wordCount = (draft.content || '').split(/\s+/).filter(Boolean).length;
 
   return (
-    <div className="panel group flex h-full flex-col gap-3 p-4 transition hover:border-white/20">
-      <div className="flex items-start gap-3">
-        <button
-          type="button"
-          onClick={onOpen}
-          className="min-w-0 flex-1 text-left"
-        >
-          <div className="flex items-start gap-2">
-            <h3 className="line-clamp-2 text-base font-semibold tracking-tight text-white group-hover:text-brand-200">
-              {draft.title || 'Untitled draft'}
-            </h3>
-          </div>
-          {draft.topic ? (
-            <div className="mt-0.5 line-clamp-1 text-xs text-text-muted">
-              {draft.topic}
-            </div>
+    <motion.article
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.025, duration: 0.22 }}
+      whileHover={{ y: -2 }}
+      className={
+        'glass-card group relative flex cursor-pointer flex-col gap-3 p-5 transition hover:border-white/[0.18] hover:bg-white/[0.04] ' +
+        (view === 'list' ? 'sm:flex-row sm:items-center' : '')
+      }
+      onClick={onOpen}
+    >
+      <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-gradient-brand-soft opacity-60 blur-3xl transition group-hover:opacity-100" />
+      <div className="relative flex flex-1 flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone={statusTone.label.toLowerCase()} size="sm" withDot>
+            {DRAFT_STATUS_LABEL[status] || status}
+          </Badge>
+          {sourceTone ? (
+            <Badge tone={sourceTone.label.toLowerCase()} size="sm">
+              {sourceTone.label}
+            </Badge>
           ) : null}
-        </button>
-        <Badge tone={statusTone.label.toLowerCase()} size="sm" withDot>
-          {DRAFT_STATUS_LABEL[status] || status}
-        </Badge>
-      </div>
-
-      {preview ? (
-        <p className="line-clamp-3 text-sm text-text-secondary">
-          {preview}
-          {draft.content && draft.content.length > 200 ? '…' : ''}
-        </p>
-      ) : (
-        <p className="text-sm italic text-text-muted">No content yet.</p>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2">
-        {sourceLabel ? (
-          <Badge tone={(SOURCE_TONE[sourceType] || {}).label?.toLowerCase() || 'brand'} size="sm">
-            <SourceTypeChip sourceType={sourceType} />
-          </Badge>
-        ) : null}
-        {typeof draft.reviewScore === 'number' ? (
-          <Badge tone={draft.reviewScore >= 7 ? 'success' : 'warning'} size="sm">
-            Score {draft.reviewScore}/10
-          </Badge>
-        ) : null}
-      </div>
-
-      {sourceSummary && sourceType ? (
-        <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2 text-xs text-text-secondary">
-          {sourceSummary.slice(0, 140)}
-          {sourceSummary.length > 140 ? '…' : ''}
         </div>
-      ) : null}
-
-      <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/[0.06] pt-3 text-xs text-text-muted">
-        <span>
-          Updated {formatDateTime(draft.updatedAt || draft.updated_at)}
-        </span>
-        <div className="flex items-center gap-1">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={onDelete}
-            aria-label="Delete draft"
-            className="h-8 w-8 p-0 text-text-muted hover:text-rose-300"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={onOpen}
-            rightIcon={<ArrowRight className="h-3.5 w-3.5" />}
-          >
-            Open
-          </Button>
+        <h3 className="line-clamp-2 text-base font-semibold tracking-tight text-white group-hover:text-white">
+          {draft.title || 'Untitled draft'}
+        </h3>
+        {preview ? (
+          <p className="line-clamp-3 text-sm leading-relaxed text-text-secondary">
+            {preview}
+            {(draft.content || '').length > 200 ? '…' : ''}
+          </p>
+        ) : (
+          <p className="text-sm italic text-text-muted">No content yet.</p>
+        )}
+        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-text-muted">
+          <span className="inline-flex items-center gap-1">
+            <CalendarClock className="h-3 w-3" />
+            {formatDateTime(draft.updatedAt || draft.updated_at)}
+          </span>
+          {wordCount > 0 ? (
+            <span className="inline-flex items-center gap-1">
+              {wordCount} words
+            </span>
+          ) : null}
         </div>
       </div>
-    </div>
+      <div
+        className={
+          'relative flex items-center gap-2 ' +
+          (view === 'list' ? 'shrink-0' : 'justify-end')
+        }
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={onOpen}
+          rightIcon={<ArrowRight className="h-3.5 w-3.5" />}
+        >
+          Open
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onDelete}
+          aria-label="Delete draft"
+          className="text-text-muted hover:text-rose-300"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </motion.article>
   );
 }

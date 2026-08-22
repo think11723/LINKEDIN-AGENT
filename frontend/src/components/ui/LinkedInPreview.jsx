@@ -1,12 +1,20 @@
+import { motion } from 'framer-motion';
+import {
+  Globe,
+  MoreHorizontal,
+  ThumbsUp,
+  MessageCircle,
+  Repeat2,
+  Send,
+  Bookmark,
+  BadgeCheck,
+} from 'lucide-react';
 import { cn } from '../../utils/cn.js';
-import { Globe, MoreHorizontal, ThumbsUp, MessageCircle, Repeat2, Send, Bookmark, BadgeCheck } from 'lucide-react';
 
 /**
- * Tasteful approximation of a LinkedIn feed post. NOT a clone of
- * LinkedIn's proprietary UI — just a clean card with author,
- * content, hashtags, and engagement icons. Renders the canonical
- * normalized post (plain text with paragraph breaks + emoji +
- * Unicode bullets). NEVER renders markdown.
+ * A polished, tasteful approximation of a LinkedIn feed post.
+ * NEVER displays markdown. Consumes the normalized content
+ * already produced by ``utils.linkedin_content.normalize_linkedin_post``.
  */
 export function LinkedInPreview({
   authorName = 'You',
@@ -17,15 +25,26 @@ export function LinkedInPreview({
   sourceAttribution = null,
   className,
 }) {
-  const contentParagraphs = (content || '').split(/\n{2,}/).filter(Boolean);
+  const paragraphs = (content || '')
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  const formattedHashtags = (hashtags || [])
+    .map((h) => (h.startsWith('#') ? h : `#${h}`))
+    .filter(Boolean);
+
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.32 }}
       className={cn(
-        'overflow-hidden rounded-2xl border border-white/10 bg-[#0f1115] shadow-panel-lg',
+        'overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0F1721] shadow-panel-lg',
         className,
       )}
     >
-      <div className="p-5 sm:p-6">
+      <div className="p-6">
         <header className="flex items-start gap-3">
           {authorAvatar ? (
             <img
@@ -34,7 +53,7 @@ export function LinkedInPreview({
               className="h-12 w-12 shrink-0 rounded-full object-cover"
             />
           ) : (
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-brand-700 text-base font-semibold text-white">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-brand text-base font-semibold text-white">
               {(authorName || 'Y').charAt(0).toUpperCase()}
             </div>
           )}
@@ -43,13 +62,13 @@ export function LinkedInPreview({
               <span className="truncate text-sm font-semibold text-white">
                 {authorName}
               </span>
-              <BadgeCheck className="h-4 w-4 shrink-0 text-sky-400" />
+              <BadgeCheck className="h-4 w-4 shrink-0 text-[#0a66c2]" />
             </div>
             <div className="truncate text-xs text-text-secondary">
               {authorHeadline}
             </div>
             <div className="mt-0.5 flex items-center gap-1 text-xs text-text-muted">
-              <span>now</span>
+              <span>Just now</span>
               <span aria-hidden>•</span>
               <Globe className="h-3 w-3" />
             </div>
@@ -64,10 +83,13 @@ export function LinkedInPreview({
         </header>
 
         <div className="mt-4 space-y-3 text-[15px] leading-relaxed text-zinc-100">
-          {contentParagraphs.length > 0 ? (
-            contentParagraphs.map((para, idx) => (
-              <p key={idx} className="whitespace-pre-line break-words">
-                {para}
+          {paragraphs.length > 0 ? (
+            paragraphs.map((p, idx) => (
+              <p
+                key={idx}
+                className="whitespace-pre-line break-words"
+              >
+                {p}
               </p>
             ))
           ) : (
@@ -75,18 +97,18 @@ export function LinkedInPreview({
           )}
         </div>
 
-        {hashtags && hashtags.length > 0 ? (
+        {formattedHashtags.length > 0 ? (
           <div className="mt-3 flex flex-wrap gap-x-2 gap-y-1 text-sm">
-            {hashtags.map((tag) => (
-              <span key={tag} className="font-medium text-brand-300">
-                {tag.startsWith('#') ? tag : `#${tag}`}
+            {formattedHashtags.map((tag) => (
+              <span key={tag} className="font-medium text-[#70b5f9]">
+                {tag}
               </span>
             ))}
           </div>
         ) : null}
 
         {sourceAttribution ? (
-          <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs text-text-secondary">
+          <div className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3 text-xs text-text-secondary">
             <div className="font-medium text-zinc-200">
               Inspired by · {sourceAttribution.label || 'Source'}
             </div>
@@ -100,7 +122,7 @@ export function LinkedInPreview({
                 href={sourceAttribution.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-0.5 inline-block max-w-full truncate text-brand-300 hover:underline"
+                className="mt-0.5 inline-block max-w-full truncate text-[#70b5f9] hover:underline"
               >
                 {sourceAttribution.url}
               </a>
@@ -125,7 +147,7 @@ export function LinkedInPreview({
         </div>
         <span>Visible to your network</span>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
