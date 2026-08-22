@@ -905,6 +905,70 @@ def _build_source_preview(
     }
 
 
+def _build_source_context(
+    *,
+    package: SourcePackage,
+    source_type: str,
+    canonical_url: str,
+    framing_hint: Optional[str] = None,
+) -> dict:
+    """Build the structured ``source`` dict for the Phase-5 Writer/Reviewer.
+
+    The Writer uses these fields as ``SOURCE FACTS`` (grounding) and
+    the Reviewer uses them to score the GROUNDING dimension. The
+    shape mirrors the contract documented in
+    ``agents/writer.py::_build_context`` and
+    ``agents/reviewer.py::_augment_review_prompt_with_source``.
+
+    Defense-in-depth: ``source_metadata`` is sanitized through the
+    same credential-key denylist that ``DraftRepository`` uses on
+    persistence, so a future regression in an adapter that produces
+    an authorization-shaped key cannot leak it into a Writer/Reviewer
+    prompt.
+    """
+    safe_meta = _sanitize_preview_value(dict(package.metadata or {}))
+    author = (
+        safe_meta.get("owner")
+        or safe_meta.get("owner_login")
+        or safe_meta.get("author")
+    )
+    dependencies = safe_meta.get("dependencies") or {}
+    technical_details: list[str] = []
+    if isinstance(dependencies, dict):
+        for ecosystem, names in dependencies.items():
+            if isinstance(names, list) and names:
+                technical_details.append(
+                    f"{ecosystem}: {', '.join(str(n) for n in names[:8])}"
+                )
+    if safe_meta.get("primary_language"):
+        technical_details.append(
+            f"Primary language: {safe_meta['primary_language']}"
+        )
+    if safe_meta.get("license") and safe_meta["license"] != "NOASSERTION":
+        technical_details.append(f"License: {safe_meta['license']}")
+
+    return {
+        "source_type": source_type,
+        "source_title": package.title or safe_meta.get("description") or "",
+        "source_url": canonical_url or safe_meta.get("url") or "",
+        "source_summary": (
+            package.summary
+            or safe_meta.get("description")
+            or safe_meta.get("readme_summary")
+            or ""
+        ),
+        "key_points": list(package.key_facts or [])[:8],
+        "technical_details": technical_details[:6],
+        "author": author or "",
+        "framing_hint": framing_hint or "",
+        "source_metadata": {
+            k: v
+            for k, v in safe_meta.items()
+            if k not in {"request_id", "important_file_contents"}
+        },
+    }
+
+
 async def _generate_from_source(
     *,
     payload: GenerateContentRequest,
@@ -1006,6 +1070,17 @@ async def _generate_from_source(
 
     # 4. Project to ResearchPackage and run the workflow.
     research_package = adapter.to_research_package(package)
+    # Build the structured source context the Phase-5 Writer and
+    # Reviewer consume. The shape is documented in agents/writer.py
+    # ``_build_context``. The framing hint, when supplied by the
+    # user via ``payload.topic``, is forwarded as the user's
+    # "desired angle".
+    source_context = _build_source_context(
+        package=package,
+        source_type=source_type,
+        canonical_url=package.metadata.get("canonical_url") or payload.source_url,
+        framing_hint=(payload.topic or "").strip() or None,
+    )
     workflow_request = GenerateContentRequest(
         topic=(
             (payload.topic or "").strip()
@@ -1016,7 +1091,9 @@ async def _generate_from_source(
     )
     try:
         workflow_result = await service.generate_content(
-            workflow_request, research_package=research_package
+            workflow_request,
+            research_package=research_package,
+            source=source_context,
         )
     except HTTPException:
         raise

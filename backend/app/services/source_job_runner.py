@@ -356,7 +356,22 @@ class SourceJobRunner:
         await repo.set_stage(job_id, repo.STAGE_WRITING)
         research_package = adapter.to_research_package(package)
 
+        # Phase 5 — build the structured source context the
+        # Writer/Reviewer consume for source-aware generation. The
+        # async job runner does not take a framing hint from the
+        # user; one can be passed via ``intent`` on the job row.
         from shared.schemas import GenerateContentRequest
+        from backend.app.api.v1.content import _build_source_context
+
+        source_type = package.metadata.get("source_type") or "generic_webpage"
+        source_context = _build_source_context(
+            package=package,
+            source_type=source_type,
+            canonical_url=(
+                package.metadata.get("canonical_url") or url
+            ),
+            framing_hint=job.get("intent") or None,
+        )
 
         request = GenerateContentRequest(
             topic=package.metadata.get("topic_hint") or package.title or "",
@@ -377,7 +392,9 @@ class SourceJobRunner:
             # access would raise "'coroutine' object has no
             # attribute 'final_post'".
             workflow_result = await service.generate_content(
-                request, research_package=research_package
+                request,
+                research_package=research_package,
+                source=source_context,
             )
         except Exception as exc:  # noqa: BLE001
             # The global error envelope would have produced a 500;

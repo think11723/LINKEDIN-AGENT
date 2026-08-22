@@ -21,7 +21,7 @@ if TYPE_CHECKING:  # pragma: no cover - import only for type checking
 
 class GraphState(TypedDict):
     """State for LangGraph workflow execution."""
-    
+
     topic: str
     context: Optional[Context]
     research_package: Optional[Any]
@@ -35,6 +35,11 @@ class GraphState(TypedDict):
     approval_threshold: int
     metadata: Dict[str, Any]
     error: Optional[str]
+    # Phase 5 — optional source context. When present, the Writer
+    # treats the post as source-inspired (no fabrication, real
+    # LinkedIn-style reaction) and the Reviewer verifies grounding
+    # against the supplied source facts.
+    source: Optional[Dict[str, Any]]
 
 
 class ContentGraphWorkflow:
@@ -301,6 +306,9 @@ class ContentGraphWorkflow:
             # provider chain via ``await``). The node must therefore
             # be async too so it can ``await`` the call. LangGraph
             # invokes both sync and async nodes correctly.
+            #
+            # Phase 5: pass ``source`` when present so the writer
+            # produces a source-inspired post with no fabrication.
             draft = await self.writer.write(
                 topic=state["execution_plan"].topic,
                 intent=state["execution_plan"].intent,
@@ -309,7 +317,8 @@ class ContentGraphWorkflow:
                 writing_style=state["execution_plan"].writing_style,
                 edit_instruction=edit_instruction,
                 context=state["context"],
-                execution_plan=state["execution_plan"]
+                execution_plan=state["execution_plan"],
+                source=state.get("source"),
             )
             
             # Validate LinkedIn formatting
@@ -361,7 +370,14 @@ class ContentGraphWorkflow:
         try:
             # ``ReviewerAgent.review`` is async (the underlying LLM
             # is async); await it to actually execute the call.
-            review = await self.reviewer.review(state["draft"], state["context"])
+            # Phase 5: forward the source context so the Reviewer can
+            # score the new GROUNDING dimension and use the source
+            # facts in its improve-step.
+            review = await self.reviewer.review(
+                state["draft"],
+                state["context"],
+                source=state.get("source"),
+            )
             state["review"] = review
 
             # Phase 8A / P0-5: record the provider+model that produced the review.
@@ -548,6 +564,7 @@ class ContentGraphWorkflow:
         topic: str,
         *,
         research_package: Optional["ResearchPackage"] = None,
+        source: Optional[Dict[str, Any]] = None,
     ) -> WorkflowResult:
         """Execute the LangGraph workflow for a given topic.
 
@@ -556,9 +573,16 @@ class ContentGraphWorkflow:
         and reuses the package; otherwise the graph performs live
         research exactly as before.
 
+        ``source``: optional Phase-5 source context. When present, the
+        Writer is told to produce a source-inspired post (no
+        fabrication of unsupported facts) and the Reviewer scores
+        the new GROUNDING dimension against the supplied source
+        facts.
+
         Args:
             topic: User's topic or request for LinkedIn content.
             research_package: optional pre-built research package.
+            source: optional source context (URL mode).
 
         Returns:
             WorkflowResult containing the final post, approval status, and metadata.
@@ -578,7 +602,8 @@ class ContentGraphWorkflow:
             "max_iterations": self.MAX_ITERATIONS,
             "approval_threshold": self.APPROVAL_THRESHOLD,
             "metadata": {},
-            "error": None
+            "error": None,
+            "source": source,
         }
         
         try:

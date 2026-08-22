@@ -4,11 +4,18 @@ Phase 8D / URL-to-LinkedIn: this service exposes a single seam —
 ``research_package`` — that lets the URL job runner feed a pre-built
 ``ResearchPackage`` into the same ``ContentGraphWorkflow`` invocation
 the topic endpoint uses. The topic path is unchanged.
+
+Phase 5 / source-aware: an additional ``source`` parameter threads
+structured source context (source_type, source_title, source_url,
+source_summary, key_points, technical_details, framing_hint) into
+the Writer and Reviewer so the generated post is a real
+LinkedIn-style reaction to the source, not a summary, and the
+Reviewer can verify grounding against the supplied source facts.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from fastapi import HTTPException
 
@@ -30,12 +37,16 @@ class WorkflowService:
         payload: GenerateContentRequest,
         *,
         research_package: Optional["ResearchPackage"] = None,
+        source: Optional[Dict[str, Any]] = None,
     ) -> GenerateContentResponse:
         """Run the existing workflow against a topic. Optional
         ``research_package`` lets the URL job runner feed a pre-built
-        ``ResearchPackage`` into the same graph. When ``None`` (the
-        default), topic mode is unchanged — the graph performs live
-        research as before.
+        ``ResearchPackage`` into the same graph. Optional ``source``
+        (Phase 5) threads structured source context into the Writer
+        and Reviewer so the post is source-inspired and grounded.
+
+        When ``None`` (the default), topic mode is unchanged — the
+        graph performs live research as before.
         """
         # URL mode may pass ``payload.topic`` empty and supply a
         # ``ResearchPackage`` whose ``topic`` becomes the workflow's
@@ -52,7 +63,9 @@ class WorkflowService:
         # context (which would create a coroutine that the caller
         # then has to deal with).
         result = await self._workflow.run(
-            topic, research_package=research_package
+            topic,
+            research_package=research_package,
+            source=source,
         )
         if result.error:
             raise HTTPException(status_code=500, detail=result.error)
