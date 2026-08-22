@@ -77,13 +77,13 @@ def app():
 def _github_package():
     return SourcePackage(
         title="owner/repo: A demo project",
-        summary="A demo project primarily Python (90%).",
+        summary="A demo project primarily Python (90%). This is a real production-grade project that solves a concrete problem. The project demonstrates clean architecture, comprehensive tests, and thoughtful API design.",
         key_facts=["100 stars, 5 forks on GitHub"],
         raw_results=[
             {
                 "title": "owner/repo",
                 "url": "https://github.com/owner/repo",
-                "snippet": "A demo project.",
+                "snippet": "First point about the project.\nSecond point about the project.\nThird point about the project.",
             }
         ],
         metadata={
@@ -100,13 +100,13 @@ def _github_package():
 def _article_package():
     return SourcePackage(
         title="An interesting article",
-        summary="An article about Foo.",
+        summary="An article about Foo. This is a real long-form piece that explains the technique in detail. The author demonstrates the technique with code examples, and explains when to use it and when not to. The piece concludes with practical takeaways for the reader.",
         key_facts=["It introduces a new technique."],
         raw_results=[
             {
                 "title": "An interesting article",
                 "url": "https://example.com/article",
-                "snippet": "An article.",
+                "snippet": "First point about the article.\nSecond point about the article.\nPractical takeaway for the reader.",
             }
         ],
         metadata={

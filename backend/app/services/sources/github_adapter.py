@@ -698,9 +698,19 @@ class GitHubSourceAdapter(BaseSourceAdapter):
         except (binascii.Error, ValueError, TypeError):
             text = ""
         truncated = False
-        if len(text) > _README_TEXT_CAP:
-            text = _truncate_at_paragraph(text, _README_TEXT_CAP)
+        # Phase 8 — clean the README (strip badge noise, decorative
+        # image lines, link-only lines) BEFORE truncating. The cleaner
+        # is deterministic and never rewrites content; it only
+        # removes UI noise that adds no semantic value to the LLM.
+        from backend.app.services.sources.readme import clean_readme
+        cleaned = clean_readme(text, max_chars=_README_TEXT_CAP)
+        if cleaned != text:
             truncated = True
+            text = cleaned
+        else:
+            if len(text) > _README_TEXT_CAP:
+                text = _truncate_at_paragraph(text, _README_TEXT_CAP)
+                truncated = True
         return {
             "text": text,
             "truncated": truncated,
@@ -1143,13 +1153,40 @@ class GitHubSourceAdapter(BaseSourceAdapter):
         else:
             metadata["topic_hint"] = f"GitHub repository {full_name}"
 
-        return SourcePackage(
+        package = SourcePackage(
             title=title,
             summary=summary,
             key_facts=key_facts,
             raw_results=raw_results,
             metadata=metadata,
         )
+        # Phase 8 — quality gate. A minimal GitHub repository
+        # (no description, no language, no README, no topics) is
+        # ``WEAK`` and the API layer will refuse to generate against
+        # it. We still return the package so the preview can show
+        # the user what was extracted.
+        from backend.app.services.sources.quality import (
+            SourceQuality,
+            evaluate_source_quality,
+        )
+        quality, reason = evaluate_source_quality(package)
+        package.metadata["quality"] = quality.value
+        package.metadata["quality_reason"] = reason
+        # Surface README section headings so the Writer can build a
+        # more useful source context.
+        from backend.app.services.sources.readme import (
+            clean_readme as _clean_for_ctx,
+            extract_headings,
+        )
+        readme_text = (readme_resp or {}).get("text", "")
+        # ``clean_readme`` was already applied to the persisted
+        # README; do it again here only to surface a stable list of
+        # headings. The cost is negligible (it is a deterministic
+        # text-munging pass).
+        headings = extract_headings(_clean_for_ctx(readme_text, max_chars=200_000))
+        if headings:
+            package.metadata["readme_headings"] = headings
+        return package
 
     # ------------------------------------------------------------------
     # ResearchPackage projection (override)

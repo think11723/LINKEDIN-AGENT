@@ -99,6 +99,12 @@ class SourcePreviewResponse(BaseModel):
     label. The frontend renders this as a "source found" card with
     the appropriate framing. ``source_metadata`` is a conservative
     projection — credentials are filtered out, fields are bounded.
+
+    The ``quality`` field (``good`` / ``weak`` / ``failed``) plus
+    ``quality_reason`` and ``body_char_count`` tell the frontend
+    whether the source is rich enough to ground a post. The
+    generation endpoint enforces the same gate so a WEAK source
+    never produces a hallucinated LinkedIn post.
     """
 
     source: dict = Field(..., description="Trimmed source preview payload")
@@ -109,6 +115,16 @@ class SourcePreviewResponse(BaseModel):
     )
     request_id: str = Field(
         ..., description="Correlation id for support / audit"
+    )
+    quality: str = Field(
+        default="good",
+        description="Source extraction quality (good|weak|failed)",
+    )
+    quality_reason: Optional[str] = Field(
+        default=None, description="Short, user-safe explanation of the quality"
+    )
+    body_char_count: int = Field(
+        default=0, description="Characters of usable body text extracted"
     )
 
 
@@ -301,6 +317,15 @@ async def source_preview(
     # 4. Build a safe preview. Strip known-credential keys; cap
     # any oversized string in metadata.
     preview = _build_source_preview(package, source_type)
+    # Phase 8 — surface the extraction quality so the UI can show
+    # "Weak source" / "Ready" and the generation endpoint can
+    # refuse to write a hallucinated post against a weak source.
+    from backend.app.services.sources.quality import (
+        SourceQuality,
+        evaluate_source_quality,
+    )
+    quality, reason = evaluate_source_quality(package)
+    body_char_count = int(package.metadata.get("body_char_count") or 0)
     await audit.log(
         user_id=user.uid,
         event_type="SOURCE_PREVIEW_SUCCEEDED",
@@ -310,6 +335,8 @@ async def source_preview(
             "adapter": adapter_name,
             "source_type": source_type,
             "request_id": request_id,
+            "quality": quality.value,
+            "body_char_count": body_char_count,
         },
     )
 
@@ -319,6 +346,9 @@ async def source_preview(
         source_label=get_source_type_label(source_type),
         adapter=adapter_name,
         request_id=request_id,
+        quality=quality.value,
+        quality_reason=reason,
+        body_char_count=body_char_count,
     )
 
 
@@ -1006,9 +1036,20 @@ def _build_source_context(
     """
     safe_meta = _sanitize_preview_value(dict(package.metadata or {}))
     author = (
-        safe_meta.get("owner")
+        safe_meta.get("author")
+        or safe_meta.get("owner")
         or safe_meta.get("owner_login")
-        or safe_meta.get("author")
+    )
+    published_at = safe_meta.get("published_at")
+    canonical = (
+        safe_meta.get("canonical_url")
+        or safe_meta.get("url")
+        or canonical_url
+    )
+    site_name = safe_meta.get("site_name")
+    description = (
+        safe_meta.get("description")
+        or package.summary
     )
     dependencies = safe_meta.get("dependencies") or {}
     technical_details: list[str] = []
@@ -1024,25 +1065,38 @@ def _build_source_context(
         )
     if safe_meta.get("license") and safe_meta["license"] != "NOASSERTION":
         technical_details.append(f"License: {safe_meta['license']}")
+    # Phase 8 — surface the cleaned README headings so the Writer
+    # can use them as a structural outline of the project.
+    headings = safe_meta.get("readme_headings") or []
+    if isinstance(headings, list) and headings:
+        # Cap the headings list so we don't blow up the prompt.
+        technical_details.append(
+            "README sections: " + ", ".join(str(h) for h in headings[:8])
+        )
 
     return {
         "source_type": source_type,
         "source_title": package.title or safe_meta.get("description") or "",
-        "source_url": canonical_url or safe_meta.get("url") or "",
-        "source_summary": (
-            package.summary
-            or safe_meta.get("description")
-            or safe_meta.get("readme_summary")
-            or ""
-        ),
+        "source_url": canonical or "",
+        "source_summary": description or "",
         "key_points": list(package.key_facts or [])[:8],
-        "technical_details": technical_details[:6],
+        "technical_details": technical_details[:8],
         "author": author or "",
+        "published_at": published_at or "",
+        "site_name": site_name or "",
         "framing_hint": framing_hint or "",
+        # ``source_metadata`` is the bounded, sanitized metadata
+        # bag the Writer / Reviewer can read for grounding detail.
+        # It is still scrubbed for credential keys.
         "source_metadata": {
             k: v
             for k, v in safe_meta.items()
-            if k not in {"request_id", "important_file_contents"}
+            if k
+            not in {
+                "request_id",
+                "important_file_contents",
+                "readme_summary",
+            }
         },
     }
 
@@ -1145,6 +1199,45 @@ async def _generate_from_source(
     # Tag the package so the writer prompt can see the type.
     package.metadata["source_type"] = source_type
     package.metadata["request_id"] = request_id
+
+    # Phase 8 — source-quality gate. A WEAK or FAILED source does
+    # NOT generate a hallucinated LinkedIn post. We surface a
+    # user-safe message and a clear CTA to retry or switch to a
+    # topic. The audit log records the quality so the operator has
+    # full diagnostic visibility.
+    from backend.app.services.sources.quality import (
+        SourceQuality,
+        evaluate_source_quality,
+        is_weak_or_failed,
+        weak_source_user_message,
+    )
+    quality, quality_reason = evaluate_source_quality(package)
+    package.metadata["quality"] = quality.value
+    package.metadata["quality_reason"] = quality_reason
+    if is_weak_or_failed(quality):
+        await audit.log(
+            user_id=user.uid,
+            event_type="SOURCE_PREVIEW_WEAK",
+            description="Source rejected by quality gate",
+            details={
+                "url": payload.source_url,
+                "adapter": getattr(adapter, "name", "unknown"),
+                "source_type": source_type,
+                "quality": quality.value,
+                "reason": quality_reason,
+                "body_char_count": int(
+                    package.metadata.get("body_char_count") or 0
+                ),
+                "request_id": request_id,
+            },
+        )
+        # 422 (Unprocessable Entity) — the request was syntactically
+        # valid but the source content is too thin to ground a
+        # LinkedIn post. The user is told what to do.
+        raise HTTPException(
+            status_code=422,
+            detail=weak_source_user_message(quality, package),
+        ) from None
 
     # 4. Project to ResearchPackage and run the workflow.
     research_package = adapter.to_research_package(package)

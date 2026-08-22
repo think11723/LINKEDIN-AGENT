@@ -354,6 +354,43 @@ class SourceJobRunner:
         # Stage 2: write + review via the existing workflow.
         # ------------------------------------------------------------------
         await repo.set_stage(job_id, repo.STAGE_WRITING)
+
+        # Phase 8 — source-quality gate. A WEAK source does NOT
+        # generate a hallucinated LinkedIn post. We mark the job
+        # failed with a user-safe error and audit the reason.
+        from backend.app.services.sources.quality import (
+            SourceQuality,
+            evaluate_source_quality,
+            is_weak_or_failed,
+        )
+        quality, quality_reason = evaluate_source_quality(package)
+        package.metadata["quality"] = quality.value
+        package.metadata["quality_reason"] = quality_reason
+        if is_weak_or_failed(quality):
+            await repo.mark_failed(
+                job_id=job_id,
+                error="This source doesn't contain enough readable information to create a grounded LinkedIn post.",
+                error_code="source_too_weak",
+                stage=repo.STAGE_ANALYZING,
+            )
+            await self._audit(
+                user_id=user_id,
+                event_type="SOURCE_PREVIEW_WEAK",
+                description="Source rejected by quality gate",
+                details={
+                    "url": url,
+                    "adapter": getattr(adapter, "name", "unknown"),
+                    "source_type": package.metadata.get("source_type"),
+                    "quality": quality.value,
+                    "reason": quality_reason,
+                    "body_char_count": int(
+                        package.metadata.get("body_char_count") or 0
+                    ),
+                    "job_id": job_id,
+                    "request_id": request_id,
+                },
+            )
+            return
         research_package = adapter.to_research_package(package)
 
         # Phase 5 — build the structured source context the

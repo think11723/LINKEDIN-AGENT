@@ -542,13 +542,22 @@ class TestSourcePreviewEndpoint:
         # Stub the adapter so we don't actually call the network.
         fake_package = SourcePackage(
             title="owner/repo: A demo project",
-            summary="An open-source demo project primarily Python (90%).",
+            summary=(
+                "An open-source demo project primarily Python (90%). "
+                "This is a real production-grade project that solves a "
+                "concrete problem with clean architecture, comprehensive "
+                "tests, and thoughtful API design."
+            ),
             key_facts=["100 stars, 5 forks on GitHub"],
             raw_results=[
                 {
                     "title": "owner/repo",
                     "url": "https://github.com/owner/repo",
-                    "snippet": "A demo project.",
+                    "snippet": (
+                        "First point about the project.\n"
+                        "Second point about the project.\n"
+                        "Third point about the project."
+                    ),
                 }
             ],
             metadata={
@@ -665,13 +674,22 @@ class TestGenerateSourceMode:
 
         fake_package = SourcePackage(
             title="owner/repo: A demo project",
-            summary="An open-source demo project primarily Python (90%).",
+            summary=(
+                "An open-source demo project primarily Python (90%). "
+                "This is a real production-grade project that solves a "
+                "concrete problem with clean architecture, comprehensive "
+                "tests, and thoughtful API design."
+            ),
             key_facts=["100 stars, 5 forks on GitHub"],
             raw_results=[
                 {
                     "title": "owner/repo",
                     "url": "https://github.com/owner/repo",
-                    "snippet": "A demo project.",
+                    "snippet": (
+                        "First point about the project.\n"
+                        "Second point about the project.\n"
+                        "Third point about the project."
+                    ),
                 }
             ],
             metadata={

@@ -59,6 +59,16 @@ from backend.app.services.sources.base import (
     SourcePackage,
     SourceUnavailableError,
 )
+from backend.app.services.sources.metadata import (
+    extract_html_metadata,
+    merged_publish_date,
+)
+from backend.app.services.sources.quality import (
+    SourceQuality,
+    evaluate_source_quality,
+    is_weak_or_failed,
+    weak_source_user_message,
+)
 from backend.app.services.sources.registry import register_adapter
 from backend.app.services.sources.ssrf import safe_get
 
@@ -270,6 +280,33 @@ def _looks_like_docs_site(host: str) -> bool:
     return host.lower() in _DOCS_HOSTS
 
 
+def _first_sentences(text: str, *, max_sentences: int = 2, max_chars: int = 400) -> str:
+    """Return the first ``max_sentences`` sentences of ``text``
+    that are not just structural noise. Used as a high-signal
+    overview key fact when the page has no bullet items.
+    """
+    if not text:
+        return ""
+    out: list[str] = []
+    # Walk the text in chunks bounded by sentence-ending
+    # punctuation. We're not parsing — just splitting on
+    # '. ' / '! ' / '? ' followed by an uppercase letter.
+    buf = ""
+    words = text.split()
+    for word in words:
+        buf = (buf + " " + word).strip() if buf else word
+        if len(buf) >= max_chars and len(out) >= 1:
+            break
+        if buf.endswith((".", "!", "?")) and len(out) < max_sentences:
+            out.append(buf)
+            buf = ""
+        if sum(len(s) for s in out) >= max_chars:
+            break
+    if buf and len(out) < max_sentences and len(buf) < max_chars:
+        out.append(buf)
+    return " ".join(s.strip() for s in out)[:max_chars].strip()
+
+
 class WebArticleAdapter(BaseSourceAdapter):
     """Catch-all web-page adapter. Registered AFTER GitHub so
     GitHub-shaped URLs still resolve to :class:`GithubAdapter`."""
@@ -316,6 +353,24 @@ class WebArticleAdapter(BaseSourceAdapter):
         # 4. Extract title + description + clean plain text.
         title, description, text = extract_article(html)
 
+        # 4b. Phase 8 — extract full metadata (canonical URL, author,
+        # publish date, site name) in a single pass. Empty fields
+        # are omitted; we never invent values.
+        from urllib.parse import urlparse
+
+        final_url = safe_response.final_url or url
+        meta = extract_html_metadata(html, base_url=final_url)
+        # ``extract_article`` may have found a more accurate
+        # description in <meta> already; the metadata helper
+        # filled the same key, so the union is consistent.
+        if description and not meta.get("description"):
+            meta["description"] = description
+        if title and not meta.get("title"):
+            meta["title"] = title
+        # URL-path date fallback.
+        if not meta.get("published_at"):
+            meta["published_at"] = merged_publish_date(meta, final_url)
+
         if not text.strip():
             raise SourceUnavailableError(
                 "Empty article body after extraction.",
@@ -325,9 +380,6 @@ class WebArticleAdapter(BaseSourceAdapter):
         # 5. Build raw_results in the same shape the Writer expects:
         # raw_results[0] = overview, [1] = key facts, [2] = main
         # detail block.
-        from urllib.parse import urlparse
-
-        final_url = safe_response.final_url or url
         host = (urlparse(final_url).hostname or "").lower()
         source_type = "docs_site" if _looks_like_docs_site(host) else "webpage"
 
@@ -350,6 +402,15 @@ class WebArticleAdapter(BaseSourceAdapter):
                     key_facts = [stripped[:200]]
                     break
 
+        # Phase 8 — also harvest the first 1-3 sentences of the
+        # body as an "overview" key fact if the heuristic didn't
+        # find any bullet items. This gives the Writer a
+        # higher-signal first key fact than the raw body.
+        if not key_facts:
+            overview = _first_sentences(text, max_sentences=2, max_chars=400)
+            if overview:
+                key_facts = [overview]
+
         raw_results: List[dict] = [
             {
                 "title": title or source_type.title(),
@@ -368,7 +429,12 @@ class WebArticleAdapter(BaseSourceAdapter):
             },
         ]
 
-        return SourcePackage(
+        # Phase 8 — quality gate. A WEAK package is still returned
+        # (so the preview can show the user what was extracted),
+        # but the metadata carries ``quality`` + ``quality_reason``
+        # so the API layer can refuse to generate against a WEAK
+        # source.
+        package = SourcePackage(
             title=title or "Web Article",
             summary=description or text[:600],
             key_facts=key_facts,
@@ -380,8 +446,22 @@ class WebArticleAdapter(BaseSourceAdapter):
                 "topic_hint": title or source_type,
                 "source_type": source_type,
                 "host": host,
+                # Project the discovered metadata so the source
+                # context for the Writer / Draft attribution card
+                # has it.
+                **meta,
             },
         )
+        quality, reason = evaluate_source_quality(package)
+        package.metadata["quality"] = quality.value
+        package.metadata["quality_reason"] = reason
+        package.metadata["body_char_count"] = len(text)
+        # If the source is WEAK or FAILED, we still return the
+        # package so the preview can render it — but the API layer
+        # should refuse to generate against it. The downstream
+        # check is in ``_generate_from_source`` / source preview
+        # endpoint.
+        return package
 
 
 # Register at import time. WebArticleAdapter must be registered
