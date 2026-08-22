@@ -124,6 +124,10 @@ app.include_router(linkedin_router)
 app.include_router(publishing_router)
 app.include_router(profile_router)
 app.include_router(settings_router)
+# Phase 10 / AI Resume Studio
+from backend.app.api.v1.resumes import router as resumes_router  # noqa: E402
+
+app.include_router(resumes_router)
 
 # P0-1 — global error handlers (install before request handlers).
 install_error_handlers(app)

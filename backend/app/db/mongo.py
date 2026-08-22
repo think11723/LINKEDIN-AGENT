@@ -29,6 +29,8 @@ COLLECTION_LINKEDIN_ACCOUNTS = "linkedin_accounts"
 COLLECTION_OAUTH_STATES = "oauth_states"
 COLLECTION_AUDIT_EVENTS = "audit_events"
 COLLECTION_SOURCE_JOBS = "source_jobs"  # Phase 8D / URL-to-LinkedIn
+COLLECTION_RESUMES = "resumes"  # Phase 10 / AI Resume Studio
+COLLECTION_ATS_ANALYSES = "ats_analyses"  # Phase 10 / AI Resume Studio
 
 _client: Optional[AsyncIOMotorClient] = None
 _db: Optional[AsyncIOMotorDatabase] = None
@@ -510,6 +512,30 @@ async def ensure_indexes() -> None:
         "expires_at",
         name="source_jobs_ttl_idx",
         expireAfterSeconds=0,
+    )
+
+    # resumes (Phase 10) -------------------------------------------------
+    await _create_index_idempotent(
+        db[COLLECTION_RESUMES],
+        [("user_id", 1), ("updated_at", -1)],
+        name="resumes_user_updated_idx",
+    )
+    await _create_index_idempotent(
+        db[COLLECTION_RESUMES],
+        [("user_id", 1), ("title", 1)],
+        name="resumes_user_title_idx",
+    )
+
+    # ats_analyses (Phase 10) ---------------------------------------------
+    await _create_index_idempotent(
+        db[COLLECTION_ATS_ANALYSES],
+        [("user_id", 1), ("resume_id", 1), ("created_at", -1)],
+        name="ats_analyses_user_resume_time_idx",
+    )
+    await _create_index_idempotent(
+        db[COLLECTION_ATS_ANALYSES],
+        [("user_id", 1), ("created_at", -1)],
+        name="ats_analyses_user_time_idx",
     )
 
     logger.info("MongoDB indexes ensured.")

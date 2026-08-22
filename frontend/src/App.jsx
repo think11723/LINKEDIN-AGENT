@@ -9,6 +9,10 @@ import DashboardPage from './pages/DashboardPage.jsx';
 import CreatePostPage from './pages/CreatePostPage.jsx';
 import DraftsPage from './pages/DraftsPage.jsx';
 import DraftViewerPage from './pages/DraftViewerPage.jsx';
+import ResumeStudioPage from './pages/ResumeStudioPage.jsx';
+import ResumeEditorPage from './pages/ResumeEditorPage.jsx';
+import ResumeATSPage from './pages/ResumeATSPage.jsx';
+import ResumeLinkedInPage from './pages/ResumeLinkedInPage.jsx';
 import ApprovalPage from './pages/ApprovalPage.jsx';
 import ApprovalFromEmailPage from './pages/ApprovalFromEmailPage.jsx';
 import ScheduledPostsPage from './pages/ScheduledPostsPage.jsx';
@@ -35,6 +39,12 @@ export default function App() {
         <Route path="/create" element={<CreatePostPage />} />
         <Route path="/drafts" element={<DraftsPage />} />
         <Route path="/drafts/:id" element={<DraftViewerPage />} />
+        <Route path="/resume" element={<ResumeStudioPage />} />
+        <Route path="/resume/new" element={<ResumeEditorPage />} />
+        <Route path="/resume/:id" element={<ResumeEditorPage />} />
+        <Route path="/resume/:id/edit" element={<ResumeEditorPage />} />
+        <Route path="/resume/:id/ats" element={<ResumeATSPage />} />
+        <Route path="/resume/:id/linkedin" element={<ResumeLinkedInPage />} />
         <Route path="/approval" element={<ApprovalPage />} />
         <Route path="/approve" element={<ApprovalFromEmailPage />} />
         <Route path="/scheduled-posts" element={<ScheduledPostsPage />} />

@@ -13,6 +13,11 @@ from backend.app.repositories.linkedin_repository import LinkedInRepository
 from backend.app.repositories.audit_repository import AuditRepository
 from backend.app.repositories.oauth_state_repository import OAuthStateRepository
 from backend.app.repositories.source_job_repository import SourceJobRepository
+from backend.app.repositories.resume_repository import (
+    ResumeRepository,
+    analysis_doc_to_response,
+    resume_doc_to_response,
+)
 
 __all__ = [
     "UserRepository",
@@ -23,4 +28,7 @@ __all__ = [
     "AuditRepository",
     "OAuthStateRepository",
     "SourceJobRepository",
+    "ResumeRepository",
+    "analysis_doc_to_response",
+    "resume_doc_to_response",
 ]

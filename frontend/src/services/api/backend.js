@@ -92,6 +92,70 @@ export function useApi() {
       disconnectLinkedIn: () =>
         authedRequest({ method: 'POST', path: '/api/v1/linkedin/disconnect' }),
       healthCheck: () => request({ path: '/health' }),
+      // Phase 10 / AI Resume Studio
+      listResumes: () => authedRequest({ path: '/api/v1/resumes' }),
+      getResumeDashboard: () =>
+        authedRequest({ path: '/api/v1/resumes/dashboard' }),
+      getResume: (resumeId) =>
+        authedRequest({
+          path: `/api/v1/resumes/${encodeURIComponent(resumeId)}`,
+        }),
+      createResume: (payload) =>
+        authedRequest({ method: 'POST', path: '/api/v1/resumes', body: payload }),
+      updateResume: (resumeId, payload) =>
+        authedRequest({
+          method: 'PUT',
+          path: `/api/v1/resumes/${encodeURIComponent(resumeId)}`,
+          body: payload,
+        }),
+      deleteResume: (resumeId) =>
+        authedRequest({
+          method: 'DELETE',
+          path: `/api/v1/resumes/${encodeURIComponent(resumeId)}`,
+        }),
+      createResumeVersion: (resumeId, payload) =>
+        authedRequest({
+          method: 'POST',
+          path: `/api/v1/resumes/${encodeURIComponent(resumeId)}/versions`,
+          body: payload,
+        }),
+      uploadResume: async (file, title, targetRole = '') => {
+        const form = new FormData();
+        form.append('file', file);
+        form.append('title', title);
+        if (targetRole) form.append('target_role', targetRole);
+        return authedRequest({
+          method: 'POST',
+          path: '/api/v1/resumes/upload',
+          body: form,
+        });
+      },
+      parseResumeText: (text) =>
+        authedRequest({
+          method: 'POST',
+          path: '/api/v1/resumes/parse',
+          body: { text },
+        }),
+      analyzeResume: (resumeId, payload) =>
+        authedRequest({
+          method: 'POST',
+          path: `/api/v1/resumes/${encodeURIComponent(resumeId)}/ats/analyze`,
+          body: payload,
+        }),
+      listResumeAnalyses: (resumeId) =>
+        authedRequest({
+          path: `/api/v1/resumes/${encodeURIComponent(resumeId)}/ats/analyses`,
+        }),
+      getResumeAnalysis: (analysisId) =>
+        authedRequest({
+          path: `/api/v1/resumes/ats/analyses/${encodeURIComponent(analysisId)}`,
+        }),
+      createLinkedInFromResume: (resumeId, payload) =>
+        authedRequest({
+          method: 'POST',
+          path: `/api/v1/resumes/${encodeURIComponent(resumeId)}/linkedin`,
+          body: payload,
+        }),
     };
   }, [user]);
 }

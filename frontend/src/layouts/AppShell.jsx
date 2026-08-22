@@ -21,6 +21,7 @@ import {
   Activity,
   TrendingUp,
   Globe,
+  Briefcase,
 } from 'lucide-react';
 
 import { cn } from '../utils/cn.js';
@@ -41,6 +42,7 @@ const NAV_PRIMARY = [
   { to: '/create', label: 'Create Post', icon: CirclePlus, accent: true },
   { to: '/drafts', label: 'Drafts', icon: NotebookPen },
   { to: '/approval', label: 'Approval', icon: FileCheck2 },
+  { to: '/resume', label: 'Resume Studio', icon: Briefcase },
 ];
 
 const NAV_PUBLISHING = [

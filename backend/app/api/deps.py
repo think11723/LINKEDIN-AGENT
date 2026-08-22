@@ -59,6 +59,24 @@ def get_audit_repository(
     return AuditRepository(db)
 
 
+# ----------------------------------------------------------------
+# Phase 10 / Resume Studio
+# ----------------------------------------------------------------
+
+def get_resume_repository(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    from backend.app.repositories.resume_repository import ResumeRepository
+    return ResumeRepository(db)
+
+
+def get_resume_service(
+    repo = Depends(get_resume_repository),
+):
+    from backend.app.services.resume_service import ResumeService
+    return ResumeService(repo)
+
+
 def get_oauth_state_repository(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> OAuthStateRepository:
