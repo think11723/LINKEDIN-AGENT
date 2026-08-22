@@ -46,7 +46,8 @@ from backend.app.services.sources.ssrf import (
 
 # Most-specific first; catch-all last.
 from backend.app.services.sources import github_adapter  # noqa: F401  (registers GitHub)
-from backend.app.services.sources import stub_adapter  # noqa: F401  (registers Stub — fallback)
+from backend.app.services.sources import web_adapter  # noqa: F401  (registers WebArticle — fall-through)
+from backend.app.services.sources import stub_adapter  # noqa: F401  (registers Stub — last-resort fallback)
 
 
 __all__ = [

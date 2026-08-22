@@ -37,6 +37,27 @@ export function useApi() {
       getDashboardSummary: () => authedRequest({ path: '/api/v1/dashboard/summary' }),
       generateContent: (payload) =>
         authedRequest({ method: 'POST', path: '/api/v1/content/generate', body: payload }),
+      // Phase 3 — synchronous source preview. The "Analyze Source"
+      // button on Create Post. No draft is created, no LLM is called.
+      previewSource: (url) =>
+        authedRequest({
+          method: 'POST',
+          path: '/api/v1/content/source/preview',
+          body: { url },
+        }),
+      // Phase 8D — async URL-generation job. Used by the legacy
+      // flow for very long-running fetches; the synchronous
+      // /generate path is preferred for normal use.
+      generateFromUrl: (payload) =>
+        authedRequest({
+          method: 'POST',
+          path: '/api/v1/content/generate-from-url',
+          body: payload,
+        }),
+      getUrlJob: (jobId) =>
+        authedRequest({
+          path: `/api/v1/content/generate-from-url/${encodeURIComponent(jobId)}`,
+        }),
       listDrafts: (params = {}) => {
         const search = new URLSearchParams();
         if (params.status) search.set('status', params.status);

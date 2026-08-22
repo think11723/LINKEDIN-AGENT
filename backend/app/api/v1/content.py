@@ -11,8 +11,21 @@ Phase 8D / URL-to-LinkedIn adds two async-job endpoints:
 * ``GET  /api/v1/content/generate-from-url/{job_id}`` — poll the job.
   Returns 404 for unknown / cross-user jobs (never 403).
 
+Phase 3 / Source Generation adds:
+
+* ``POST /api/v1/content/source/preview`` — synchronous analyze that
+  fetches the URL through the SSRF guard + adapter layer, classifies
+  the source, and returns a structured preview (title / summary /
+  key facts / source type). NO draft is created. This is the "Analyze
+  Source" button behind the Create Post page.
+* ``POST /api/v1/content/generate`` — now also accepts
+  ``source_url``. When set, the request runs the source pipeline
+  synchronously and persists a draft with the source's metadata
+  attached. Topic-mode drafts are unchanged.
+
 The actual fetch + analysis + writer + reviewer pipeline runs in
-``backend/app/services/source_job_runner.py``.
+``backend/app/services/source_job_runner.py`` (async job mode) and
+inline for the synchronous preview / unified ``/generate`` path.
 """
 
 from __future__ import annotations
@@ -22,6 +35,7 @@ from datetime import timedelta
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Response, status
+from pydantic import BaseModel, Field
 
 from backend.app.api.deps import (
     get_approval_repository,
@@ -48,13 +62,54 @@ from backend.app.services.sources import (
     GITHUB_ALLOWLIST,
     SourceBlockedError,
     SourceFetchError,
+    SourcePackage,
     resolve_adapter,
     validate_url,
+)
+from backend.app.services.sources.classification import (
+    classify as classify_source,
+    get_source_label as get_source_type_label,
 )
 from backend.app.services.workflow_service import WorkflowService
 from shared.schemas import GenerateContentRequest, GenerateContentResponse
 
 router = APIRouter(prefix="/api/v1/content", tags=["content"])
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 / Source preview — request / response models
+# ---------------------------------------------------------------------------
+
+
+class SourcePreviewRequest(BaseModel):
+    """Request body for ``POST /api/v1/content/source/preview``.
+
+    The user supplies a URL; the server fetches it (SSRF-guarded),
+    runs the appropriate adapter, classifies the source, and returns
+    a structured preview. No draft is created. No LLM call is made.
+    """
+
+    url: str = Field(..., min_length=1, description="Public URL to analyze")
+
+
+class SourcePreviewResponse(BaseModel):
+    """Body of the source-preview endpoint.
+
+    Carries the trimmed ``SourcePackage`` plus the classification
+    label. The frontend renders this as a "source found" card with
+    the appropriate framing. ``source_metadata`` is a conservative
+    projection — credentials are filtered out, fields are bounded.
+    """
+
+    source: dict = Field(..., description="Trimmed source preview payload")
+    source_type: str = Field(..., description="Canonical source-type label")
+    source_label: str = Field(..., description="Human-readable source-type label")
+    adapter: Optional[str] = Field(
+        default=None, description="Adapter that produced the package"
+    )
+    request_id: str = Field(
+        ..., description="Correlation id for support / audit"
+    )
 
 
 def get_workflow_service() -> WorkflowService:
@@ -80,10 +135,35 @@ async def generate_content(
 
     The result is persisted in MongoDB owned by the authenticated user.
 
+    Phase 3: when ``payload.source_url`` is supplied, the request
+    routes to the source pipeline (SSRF-safe fetch → adapter →
+    classification → writer → reviewer → normalize → persist). The
+    legacy topic-mode path is unchanged.
+
     Phase 8A / P0-1: the global exception handler in
     ``backend.app.core.error_handlers`` produces a safe envelope for any
     uncaught exception — never ``str(exc)``.
     """
+    # Source-mode takes precedence. The topic field is optional and
+    # may be honored as a writer framing override.
+    if payload.source_url:
+        return await _generate_from_source(
+            payload=payload,
+            user=user,
+            service=service,
+            drafts=drafts,
+            approvals=approvals,
+            audit=audit,
+            users=users,
+        )
+
+    # Topic-mode legacy path.
+    if not (payload.topic and payload.topic.strip()):
+        raise HTTPException(
+            status_code=400,
+            detail="Topic cannot be empty. Provide either `topic` or `source_url`.",
+        )
+
     # WorkflowService raises HTTPException for empty topics; re-raise.
     # ``WorkflowService.generate_content`` is async because the
     # LangGraph it runs contains async nodes (Writer and Reviewer
@@ -113,6 +193,133 @@ async def generate_content(
         )
 
     return response
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 / Source preview endpoint (synchronous analyze, no draft)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/source/preview",
+    response_model=SourcePreviewResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def source_preview(
+    payload: SourcePreviewRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+    audit: AuditRepository = Depends(get_audit_repository),
+) -> SourcePreviewResponse:
+    """Synchronously analyze a URL and return a source preview.
+
+    Flow:
+      1. SSRF pre-check (``validate_url``). 400 on any blocked URL.
+      2. Resolve the appropriate adapter and call ``adapter.fetch``.
+         400 / 502 with a safe user message on any failure.
+      3. Run :func:`classify_source` to project the package into a
+         single canonical ``source_type`` label.
+      4. Build a trimmed preview (no raw HTML, no README text, no
+         secrets) and return it.
+      5. Audit row ``SOURCE_PREVIEW_SUCCEEDED`` / ``SOURCE_PREVIEW_FAILED``
+         with safe metadata only.
+
+    This endpoint does NOT create a draft and does NOT call the LLM.
+    It is the backend for the "Analyze Source" button in the Create
+    Post page.
+    """
+    request_id = f"req_{uuid.uuid4().hex}"
+
+    # 1. SSRF pre-check.
+    try:
+        validate_url(payload.url, allow_hosts=None)
+    except SourceBlockedError as exc:
+        await audit.log(
+            user_id=user.uid,
+            event_type="SOURCE_PREVIEW_BLOCKED",
+            description="URL rejected by SSRF pre-check",
+            details={"url": payload.url, "reason": exc.code, "request_id": request_id},
+        )
+        raise HTTPException(status_code=400, detail=exc.message) from exc
+
+    # 2. Adapter + fetch.
+    try:
+        adapter = resolve_adapter(payload.url)
+        package: SourcePackage = await adapter.fetch(
+            payload.url, request_id=request_id
+        )
+    except SourceBlockedError as exc:
+        await audit.log(
+            user_id=user.uid,
+            event_type="SOURCE_PREVIEW_BLOCKED",
+            description="URL rejected during fetch (SSRF)",
+            details={
+                "url": payload.url,
+                "reason": exc.code,
+                "request_id": request_id,
+            },
+        )
+        raise HTTPException(status_code=400, detail=exc.message) from exc
+    except SourceFetchError as exc:
+        await audit.log(
+            user_id=user.uid,
+            event_type="SOURCE_PREVIEW_FAILED",
+            description="Source preview fetch failed",
+            details={
+                "url": payload.url,
+                "error_code": exc.code,
+                "request_id": request_id,
+            },
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=_user_safe_fetch_message(exc.code, exc.message),
+        ) from exc
+    except ValueError as exc:
+        # No adapter matched (defensive — should not happen because
+        # the SSRF guard accepts any http(s) URL).
+        await audit.log(
+            user_id=user.uid,
+            event_type="SOURCE_PREVIEW_FAILED",
+            description="No adapter matches URL",
+            details={"url": payload.url, "request_id": request_id},
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported URL. Use http:// or https:// to a public page.",
+        ) from exc
+
+    # 3. Classify.
+    adapter_name = getattr(adapter, "name", "unknown")
+    source_type = classify_source(
+        url=package.metadata.get("canonical_url") or payload.url,
+        adapter=adapter_name,
+        title=package.title or "",
+        description=package.summary or "",
+        metadata=package.metadata or {},
+    )
+
+    # 4. Build a safe preview. Strip known-credential keys; cap
+    # any oversized string in metadata.
+    preview = _build_source_preview(package, source_type)
+    await audit.log(
+        user_id=user.uid,
+        event_type="SOURCE_PREVIEW_SUCCEEDED",
+        description="Source preview ready",
+        details={
+            "url": payload.url,
+            "adapter": adapter_name,
+            "source_type": source_type,
+            "request_id": request_id,
+        },
+    )
+
+    return SourcePreviewResponse(
+        source=preview,
+        source_type=source_type,
+        source_label=get_source_type_label(source_type),
+        adapter=adapter_name,
+        request_id=request_id,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -556,3 +763,312 @@ async def _maybe_send_approval_email(
             "recipient_fingerprint_sha256_16": recipient_fp,
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 / Source generation helpers (synchronous /generate source mode)
+# ---------------------------------------------------------------------------
+
+
+#: Error codes the source pipeline may emit, mapped to user-safe
+#: messages. NEVER include stack traces, raw URLs with credentials,
+#: internal IP addresses, or MongoDB errors here.
+_USER_SAFE_FETCH_MESSAGES: dict[str, str] = {
+    "repository_not_found": "Repository not found on GitHub.",
+    "github_unauthorized": "GitHub rejected the request. Check the token.",
+    "github_forbidden": "Access to this repository is forbidden.",
+    "github_rate_limited": "GitHub rate limit reached. Try again later.",
+    "dmca": "This URL is not allowed for security reasons.",
+    "not_html": "The URL did not return a readable article.",
+    "thin_content": "No readable content found on the page.",
+    "bad_response": "The source returned an unexpected response.",
+    "not_allowlisted": "The host is not on the allowlist.",
+    "http_5xx": "The source is temporarily unavailable.",
+    "http_4xx_unexpected": "The source rejected the request.",
+    "upstream_404": "The page was not found.",
+    "upstream_rate_limited": "The source is rate-limiting requests.",
+    "timeout": "The source took too long to respond.",
+    "connect_error": "Could not reach the source.",
+    "binary_content": "The source is not a readable document.",
+    "binary_content_pdf": "PDF sources are not supported.",
+    "paywall": "The source appears to be behind a paywall.",
+    "content_unavailable_or_paywalled": (
+        "The source appears to be behind a paywall or is unavailable."
+    ),
+    "unsupported_url_form": "This URL form is not supported.",
+    "html_too_large": "The page is too large to analyze.",
+    "response_too_large": "The response exceeded the size limit.",
+    "github_cumulative_too_large": "The repository exceeded the size limit.",
+    "private_ip": "The URL points to a private network.",
+    "loopback": "The URL points to a local address.",
+    "link_local": "The URL is not a public address.",
+    "bad_scheme": "Only http:// and https:// are supported.",
+    "userinfo": "URLs with credentials are not allowed.",
+    "bad_port": "That port is not allowed.",
+    "bad_host": "Invalid host.",
+    "bad_ip": "Invalid IP address.",
+    "dns_error": "Could not resolve the host.",
+    "too_many_redirects": "The URL redirected too many times.",
+    "redirect_to_private": "The URL redirected to a private address.",
+    "bad_url": "Invalid URL.",
+    "stream_error": "The connection was interrupted.",
+    "http_error": "The source returned an error.",
+}
+
+
+def _user_safe_fetch_message(code: str, default: str) -> str:
+    """Return a user-safe message for a source-fetch error code.
+
+    The defaults map covers the full set of stable error codes the
+    adapters may raise. New codes added in the future must update the
+    map so the frontend can render a clean error.
+    """
+    if code in _USER_SAFE_FETCH_MESSAGES:
+        return _USER_SAFE_FETCH_MESSAGES[code]
+    return "Could not read this source. Please check the URL and try again."
+
+
+#: Defense-in-depth — never echo these keys into a preview payload.
+_PREVIEW_FORBIDDEN_KEYS: frozenset[str] = frozenset(
+    {
+        "authorization",
+        "bearer",
+        "github_token",
+        "cookie",
+        "set-cookie",
+        "access_token",
+        "refresh_token",
+        "client_secret",
+        "api_key",
+        "secret",
+        "password",
+        "private_key",
+    }
+)
+
+
+def _sanitize_preview_value(value: Any) -> Any:
+    """Cap nested strings, drop forbidden keys recursively.
+
+    Mirrors the policy in :func:`_sanitize_source_metadata` from the
+    draft repository — kept in sync to keep the persisted and the
+    preview blobs shaped the same.
+    """
+    if isinstance(value, str):
+        if len(value) > 1024:
+            return value[:1024] + "…"
+        return value
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_preview_value(v) for v in value[:32]]
+    if isinstance(value, dict):
+        cleaned: dict = {}
+        for k, v in list(value.items())[:24]:
+            if k.lower() in _PREVIEW_FORBIDDEN_KEYS:
+                continue
+            cleaned[k] = _sanitize_preview_value(v)
+        return cleaned
+    return value
+
+
+def _build_source_preview(
+    package: SourcePackage,
+    source_type: str,
+) -> dict:
+    """Project a :class:`SourcePackage` into the API's preview payload.
+
+    No raw HTML, no README text bodies, no authorization-shaped keys.
+    Every nested string is capped.
+    """
+    safe_meta = _sanitize_preview_value(dict(package.metadata or {}))
+    return {
+        "type": source_type,
+        "url": str(safe_meta.get("url") or ""),
+        "final_url": str(
+            safe_meta.get("canonical_url") or safe_meta.get("url") or ""
+        ),
+        "title": str(package.title or ""),
+        "summary": str(package.summary or ""),
+        "description": str(
+            safe_meta.get("description") or package.summary or ""
+        ),
+        "key_facts": list(package.key_facts or [])[:7],
+        "source_metadata": {
+            k: v
+            for k, v in safe_meta.items()
+            if k
+            not in {
+                "request_id",
+                "important_file_contents",
+                "readme_summary",
+            }
+        },
+    }
+
+
+async def _generate_from_source(
+    *,
+    payload: GenerateContentRequest,
+    user: AuthenticatedUser,
+    service: WorkflowService,
+    drafts: DraftRepository,
+    approvals: ApprovalRepository,
+    audit: AuditRepository,
+    users: UserRepository,
+) -> GenerateContentResponse:
+    """Run the source pipeline end-to-end and persist the result.
+
+    Reuses the same :class:`SourceJobRunner` building blocks:
+
+    1. SSRF pre-check.
+    2. Adapter + fetch (deterministic GitHub API or web HTML extract).
+    3. Source classification.
+    4. Project to ``ResearchPackage`` so the existing writer
+       contract is byte-identical to the topic path.
+    5. Run the existing writer + reviewer via ``WorkflowService``.
+    6. Persist the draft with the source URL + metadata attached.
+
+    Failures are user-safe (never echo the raw error message).
+    """
+    request_id = f"req_{uuid.uuid4().hex}"
+
+    # 1. SSRF pre-check.
+    try:
+        validate_url(payload.source_url, allow_hosts=None)
+    except SourceBlockedError as exc:
+        await audit.log(
+            user_id=user.uid,
+            event_type="SOURCE_FETCH_BLOCKED",
+            description="URL rejected by SSRF pre-check",
+            details={
+                "url": payload.source_url,
+                "reason": exc.code,
+                "request_id": request_id,
+            },
+        )
+        raise HTTPException(status_code=400, detail=exc.message) from exc
+
+    # 2. Adapter + fetch.
+    try:
+        adapter = resolve_adapter(payload.source_url)
+        package: SourcePackage = await adapter.fetch(
+            payload.source_url, request_id=request_id
+        )
+    except SourceBlockedError as exc:
+        await audit.log(
+            user_id=user.uid,
+            event_type="SOURCE_FETCH_BLOCKED",
+            description="URL rejected during fetch (SSRF)",
+            details={
+                "url": payload.source_url,
+                "reason": exc.code,
+                "request_id": request_id,
+            },
+        )
+        raise HTTPException(status_code=400, detail=exc.message) from exc
+    except SourceFetchError as exc:
+        await audit.log(
+            user_id=user.uid,
+            event_type="SOURCE_FETCH_FAILED",
+            description="Source fetch failed",
+            details={
+                "url": payload.source_url,
+                "error_code": exc.code,
+                "request_id": request_id,
+            },
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=_user_safe_fetch_message(exc.code, exc.message),
+        ) from exc
+    except ValueError as exc:
+        await audit.log(
+            user_id=user.uid,
+            event_type="SOURCE_FETCH_FAILED",
+            description="No adapter matches URL",
+            details={"url": payload.source_url, "request_id": request_id},
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported URL. Use http:// or https:// to a public page.",
+        ) from exc
+
+    # 3. Classify.
+    source_type = classify_source(
+        url=package.metadata.get("canonical_url") or payload.source_url,
+        adapter=getattr(adapter, "name", "unknown"),
+        title=package.title or "",
+        description=package.summary or "",
+        metadata=package.metadata or {},
+    )
+    # Tag the package so the writer prompt can see the type.
+    package.metadata["source_type"] = source_type
+    package.metadata["request_id"] = request_id
+
+    # 4. Project to ResearchPackage and run the workflow.
+    research_package = adapter.to_research_package(package)
+    workflow_request = GenerateContentRequest(
+        topic=(
+            (payload.topic or "").strip()
+            or package.metadata.get("topic_hint")
+            or package.title
+        ),
+        image_path=None,
+    )
+    try:
+        workflow_result = await service.generate_content(
+            workflow_request, research_package=research_package
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        await audit.log(
+            user_id=user.uid,
+            event_type="SOURCE_GENERATION_FAILED",
+            description="Writer/reviewer pipeline failed",
+            details={
+                "url": payload.source_url,
+                "request_id": request_id,
+                "exception_type": exc.__class__.__name__,
+            },
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="We couldn't turn this source into a post. Please try again.",
+        ) from exc
+
+    # 5. Persist the draft with source metadata.
+    try:
+        response = await _persist_result(
+            user=user,
+            workflow_result=workflow_result,
+            drafts=drafts,
+            approvals=approvals,
+            audit=audit,
+            users=users,
+            source_url=payload.source_url,
+            source_metadata={
+                **(package.metadata or {}),
+                "source_type": source_type,
+            },
+        )
+    except Exception:  # pragma: no cover - defensive
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "Persistence failed for source-mode draft; returning workflow result."
+        )
+        response = workflow_result
+
+    await audit.log(
+        user_id=user.uid,
+        event_type="URL_DRAFT_SUCCEEDED",
+        description="URL draft generated (synchronous)",
+        details={
+            "url": payload.source_url,
+            "adapter": getattr(adapter, "name", "unknown"),
+            "source_type": source_type,
+            "request_id": request_id,
+            "draft_id": getattr(response, "draft_id", None),
+        },
+    )
+    return response

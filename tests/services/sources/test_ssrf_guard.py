@@ -184,13 +184,16 @@ def test_check_ip_family_rejects_bad_ip() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_validate_url_passes_raw_ip_literals_to_resolve_safely() -> None:
-    """``validate_url`` does NOT do IP-family checks (separation of
-    concerns). Raw IP literals pass syntax validation and are only
-    blocked by ``resolve_safely`` which runs the IP-family check.
+def test_validate_url_blocks_raw_ip_literals_synchronously() -> None:
+    """``validate_url`` does an EARLY IP-family check for literal-IP
+    URLs so obvious SSRF payloads (e.g. ``http://127.0.0.1/``,
+    ``http://169.254.169.254/``) are blocked synchronously by the
+    pre-check, not deferred to DNS resolution. This is a Phase 3
+    defense-in-depth improvement.
 
-    This test documents the contract: ``validate_url`` accepts IP
-    literals; the second layer (``resolve_safely``) is the IP guard.
+    Non-literal hostnames (e.g. ``example.com``) still pass through
+    to :func:`resolve_safely` which runs the full IP-family
+    allowlist after DNS resolution.
     """
     for url in [
         "http://10.0.0.1/x",
@@ -199,6 +202,19 @@ def test_validate_url_passes_raw_ip_literals_to_resolve_safely() -> None:
         "https://[fd00::1]/x",
         "http://[fe80::1]/x",
         "http://169.254.169.254/latest/meta-data",
+    ]:
+        with pytest.raises(SourceBlockedError):
+            validate_url(url)
+
+
+def test_validate_url_allows_hostnames() -> None:
+    """Non-literal hostnames (e.g. ``example.com``) pass through the
+    pre-check; the IP-family guard runs after DNS resolution in
+    :func:`resolve_safely`.
+    """
+    for url in [
+        "http://example.com/x",
+        "https://example.com/x",
     ]:
         parsed = validate_url(url)
         assert parsed.scheme in {"http", "https"}

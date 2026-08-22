@@ -8,13 +8,43 @@ from pydantic import BaseModel, Field
 
 
 class GenerateContentRequest(BaseModel):
-    """Request payload for content generation from the web UI."""
+    """Request payload for content generation from the web UI.
 
-    topic: str = Field(
-        ..., min_length=1, description="LinkedIn topic or prompt"
+    Phase 3 / Source Generation: either ``topic`` OR ``source_url`` is
+    accepted. When ``source_url`` is set, the request triggers the URL
+    pipeline (synchronous preview + generation) and ``topic`` is
+    treated as an optional override for the writer's framing. If both
+    are supplied, ``source_url`` wins and ``topic`` is honored as the
+    writer's override; the response is source-mode.
+    """
+
+    topic: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "LinkedIn topic or prompt. Required for topic mode. "
+            "Optional override for source mode."
+        ),
     )
     image_path: Optional[str] = Field(
         default=None, description="Optional local image path"
+    )
+    source_url: Optional[str] = Field(
+        default=None,
+        description=(
+            "Public URL (article, GitHub repo, docs, etc.). When set, "
+            "the request runs the source-mode pipeline and ignores "
+            "the empty-topic validation."
+        ),
+    )
+    intent: Optional[str] = Field(
+        default=None, description="Optional writer intent override"
+    )
+    audience: Optional[str] = Field(
+        default=None, description="Optional target-audience hint"
+    )
+    tone: Optional[str] = Field(
+        default=None, description="Optional tone override"
     )
 
 

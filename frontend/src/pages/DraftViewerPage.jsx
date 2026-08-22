@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { ArrowLeft, CalendarClock, Copy, Download, Trash2, Edit3, Send } from 'lucide-react';
+import { ArrowLeft, CalendarClock, Copy, Download, Trash2, Edit3, Send, Link2, Github, Globe, BookOpen, Rocket } from 'lucide-react';
 
 import { useApi } from '../services/api/backend.js';
 import { useDrafts } from '../context/DraftsContext.jsx';
@@ -340,6 +340,10 @@ export default function DraftViewerPage() {
 
       <ErrorBanner error={error} onRetry={loadDraft} />
 
+      {/* Phase 3 — Source attribution. Only render when the draft
+          carries source metadata. Topic-mode drafts render no card. */}
+      <SourceAttribution draft={draft} />
+
       <Card>
         <CardHeader>
           <CardTitle>Status</CardTitle>
@@ -573,5 +577,87 @@ export default function DraftViewerPage() {
         ) : null}
       </ConfirmDialog>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 / Source attribution card
+// ---------------------------------------------------------------------------
+
+const SOURCE_TYPE_LABEL = {
+  github_repository: 'GitHub Repository',
+  github_readme: 'GitHub README',
+  blog_article: 'Blog Article',
+  documentation: 'Documentation',
+  product_page: 'Product Announcement',
+  generic_webpage: 'Web Article',
+};
+
+function SourceTypeIcon({ sourceType, className = 'h-4 w-4' }) {
+  switch (sourceType) {
+    case 'github_repository':
+    case 'github_readme':
+      return <Github className={className} />;
+    case 'documentation':
+      return <BookOpen className={className} />;
+    case 'product_page':
+      return <Rocket className={className} />;
+    case 'blog_article':
+    case 'generic_webpage':
+    default:
+      return <Globe className={className} />;
+  }
+}
+
+function SourceAttribution({ draft }) {
+  const sourceUrl = draft?.source_url;
+  const sourceMeta = draft?.source_metadata || {};
+  if (!sourceUrl && !sourceMeta.url) return null;
+  const sourceType = sourceMeta.source_type || sourceMeta.adapter || '';
+  const label = SOURCE_TYPE_LABEL[sourceType] || 'Web Article';
+  const title =
+    sourceMeta.full_name ||
+    sourceMeta.title ||
+    sourceMeta.description ||
+    sourceUrl ||
+    '';
+  const description = sourceMeta.description || sourceMeta.readme_summary || '';
+  const finalUrl =
+    sourceMeta.canonical_url || sourceMeta.url || sourceUrl || '';
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Link2 className="h-4 w-4 text-zinc-400" />
+          Inspired by
+        </CardTitle>
+        <CardDescription>The source that inspired this draft.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex items-center gap-2 text-zinc-200">
+          <SourceTypeIcon sourceType={sourceType} className="h-4 w-4 text-zinc-300" />
+          <span className="text-sm font-medium">{label}</span>
+        </div>
+        {title ? (
+          <div className="text-lg font-semibold text-white">{title}</div>
+        ) : null}
+        {description && description !== title ? (
+          <div className="text-sm text-zinc-300">{description}</div>
+        ) : null}
+        {finalUrl ? (
+          <div>
+            <a
+              href={finalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-sm text-zinc-200 underline decoration-dotted hover:text-white"
+            >
+              🔗 View source
+            </a>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }

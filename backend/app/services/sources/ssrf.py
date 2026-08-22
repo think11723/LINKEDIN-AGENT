@@ -194,6 +194,22 @@ def validate_url(
     if not host:
         raise SourceBlockedError("Missing host.", code="bad_host")
 
+    # Defense-in-depth: if the host is a literal IP, run the IP-family
+    # check NOW so obvious SSRF payloads (``http://127.0.0.1/``,
+    # ``http://169.254.169.254/``, ``http://10.0.0.1/``) are rejected
+    # by the synchronous pre-check, not deferred to DNS resolution.
+    # The IP-family vet is still re-run after DNS resolution in
+    # :func:`resolve_safely`, so hostname → IP rebinding is also
+    # blocked. This early check only blocks literal-IP URLs.
+    import ipaddress as _ip
+
+    try:
+        _ip.ip_address(host)
+        check_ip_family(host)
+    except ValueError:
+        # Not a literal IP — DNS resolution will do the check.
+        pass
+
     # If ``allow_hosts`` given, the host must be an EXACT member (no
     # suffix matching). This is the GitHub allowlist enforcement.
     if allow_hosts:
