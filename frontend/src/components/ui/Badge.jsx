@@ -1,23 +1,41 @@
 import { cn } from '../../utils/cn.js';
+import { TONE } from '../../utils/design.js';
 
-const variants = {
-  default: 'border-white/10 bg-white/5 text-zinc-100',
-  outline: 'border-white/15 bg-transparent text-zinc-200',
-  success: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200',
-  warning: 'border-amber-500/40 bg-amber-500/10 text-amber-200',
-  info: 'border-sky-500/40 bg-sky-500/10 text-sky-200',
-  muted: 'border-white/10 bg-white/[0.03] text-zinc-400',
+const sizeClasses = {
+  xs: 'h-5 px-1.5 text-[10px] gap-1',
+  sm: 'h-6 px-2 text-[11px] gap-1',
+  md: 'h-7 px-2.5 text-xs gap-1.5',
+  lg: 'h-8 px-3 text-sm gap-1.5',
 };
 
-export function Badge({ variant = 'default', className, ...rest }) {
+export function Badge({
+  className,
+  tone = 'neutral',
+  size = 'sm',
+  withDot = false,
+  children,
+  ...rest
+}) {
+  const toneClass = TONE[tone] ?? TONE.neutral;
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium',
-        variants[variant] ?? variants.default,
+        'inline-flex items-center rounded-full border font-medium leading-none whitespace-nowrap transition-colors',
+        toneClass.bg,
+        toneClass.border,
+        toneClass.text,
+        sizeClasses[size] ?? sizeClasses.sm,
         className,
       )}
       {...rest}
-    />
+    >
+      {withDot ? (
+        <span
+          className={cn('h-1.5 w-1.5 shrink-0 rounded-full', toneClass.dot)}
+          aria-hidden
+        />
+      ) : null}
+      {children}
+    </span>
   );
 }

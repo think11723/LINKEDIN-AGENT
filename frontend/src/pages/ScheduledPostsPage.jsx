@@ -1,33 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Trash2, CalendarClock, Inbox, AlertTriangle, RotateCw, CheckCircle2 } from 'lucide-react';
 
 import { useApi } from '../services/api/backend.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/Card.jsx';
 import { Button } from '../components/ui/Button.jsx';
 import { Badge } from '../components/ui/Badge.jsx';
-import { EmptyState, ErrorBanner, Spinner } from '../components/ui/Feedback.jsx';
+import { PageHeader } from '../components/ui/PageHeader.jsx';
+import { EmptyState, ErrorBanner, Skeleton } from '../components/ui/Feedback.jsx';
 import { ConfirmDialog } from '../components/ConfirmDialog.jsx';
 import { formatDateTime } from '../utils/date.js';
+import { DRAFT_STATUS_TONE, DRAFT_STATUS_LABEL } from '../utils/design.js';
 
 const POLL_INTERVAL_MS = 30000;
-
-// Phase 8B P1 — STATUS_VARIANT now distinguishes ``failed`` from ``running``.
-const STATUS_VARIANT = {
-  pending: 'info',
-  running: 'info',
-  completed: 'success',
-  failed: 'danger',
-  cancelled: 'muted',
-};
-
-const STATUS_LABEL = {
-  pending: 'Pending',
-  running: 'Running',
-  completed: 'Published',
-  failed: 'Failed',
-  cancelled: 'Cancelled',
-};
 
 export default function ScheduledPostsPage() {
   const api = useApi();
@@ -65,7 +50,6 @@ export default function ScheduledPostsPage() {
       toast.success('Schedule cancelled.');
       await load();
     } catch (err) {
-      // Phase 8A envelope: err.message is the safe message.
       const code = err?.code;
       if (code === 'CONFLICT') {
         toast.error('Only pending jobs can be cancelled.');
@@ -79,71 +63,80 @@ export default function ScheduledPostsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-semibold">Scheduled Posts</h1>
-        <p className="text-zinc-400">Review queued publishing jobs and cancel any that should not run.</p>
-      </div>
+    <div className="space-y-6 animate-fadeIn">
+      <PageHeader
+        eyebrow="Publishing"
+        title="Scheduled Posts"
+        subtitle="Review queued publishing jobs and cancel any that should not run."
+      />
 
       <ErrorBanner error={error} onRetry={load} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Upcoming & recent jobs</CardTitle>
-          <CardDescription>{jobs.length} job{jobs.length === 1 ? '' : 's'}.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <Spinner />
-          ) : jobs.length ? (
-            <div className="space-y-3">
-              {jobs.map((job) => (
-                <div
-                  key={job.job_id}
-                  className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
-                >
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <div className="text-lg font-semibold text-zinc-100">
-                        {job.title || 'Untitled'}
-                      </div>
-                      <div className="mt-1 text-sm text-zinc-400">
-                        {job.scheduled_time
-                          ? formatDateTime(job.scheduled_time)
-                          : 'No time set'}
-                      </div>
-                      {job.last_error ? (
-                        <div className="mt-1 text-xs text-rose-300">
-                          Last error: {job.last_error}
-                        </div>
-                      ) : null}
+      {loading && !jobs.length ? (
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-24" />
+          ))}
+        </div>
+      ) : jobs.length ? (
+        <div className="space-y-2">
+          {jobs.map((job) => {
+            const status = job.status || 'pending';
+            const tone = DRAFT_STATUS_TONE[status] || DRAFT_STATUS_TONE.pending;
+            return (
+              <div
+                key={job.job_id}
+                className="panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <CalendarClock className="h-4 w-4 shrink-0 text-text-muted" />
+                    <div className="truncate text-sm font-semibold text-white">
+                      {job.title || 'Untitled job'}
                     </div>
-                    <Badge variant={STATUS_VARIANT[job.status] || 'muted'}>
-                      {STATUS_LABEL[job.status] || job.status}
-                    </Badge>
                   </div>
-                  {job.status === 'pending' ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setConfirmId(job.job_id)}
-                      >
-                        <Trash2 className="h-4 w-4" /> Cancel
-                      </Button>
+                  <div className="mt-1 text-xs text-text-muted">
+                    {job.scheduled_time
+                      ? formatDateTime(job.scheduled_time)
+                      : 'No time set'}
+                  </div>
+                  {job.last_error ? (
+                    <div className="mt-1 flex items-center gap-1 text-xs text-rose-300">
+                      <AlertTriangle className="h-3 w-3" />
+                      {job.last_error}
                     </div>
                   ) : null}
                 </div>
-              ))}
-            </div>
-          ) : (
+                <div className="flex items-center gap-2">
+                  <Badge tone={tone.label.toLowerCase()} size="sm" withDot>
+                    {DRAFT_STATUS_LABEL[status] || status}
+                  </Badge>
+                  {status === 'pending' ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setConfirmId(job.job_id)}
+                      leftIcon={<Trash2 className="h-3.5 w-3.5" />}
+                    >
+                      Cancel
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <Card>
+          <CardContent>
             <EmptyState
+              icon={<CalendarClock className="h-5 w-5" />}
               title="No scheduled jobs"
               description="Schedule a draft from the viewer to populate this list."
             />
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       <ConfirmDialog
         open={Boolean(confirmId)}

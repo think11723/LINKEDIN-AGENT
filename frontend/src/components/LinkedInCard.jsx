@@ -1,21 +1,23 @@
 import { useEffect, useState } from 'react';
+import { CheckCircle2, Linkedin, ShieldCheck, X } from 'lucide-react';
 
 import { useApi } from '../services/api/backend.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { Button } from './ui/Button.jsx';
+import { Badge } from './ui/Badge.jsx';
 import { Spinner } from './ui/Feedback.jsx';
 import { ConfirmDialog } from './ConfirmDialog.jsx';
 
 /**
- * Phase 8B P1-1 + P1-11 — LinkedIn connection card.
- *
- * Reads ``GET /api/v1/linkedin/status`` to display the current state, lets
- * the user connect (full-page redirect to the authorization URL from
+ * LinkedIn connection card. Reads ``GET /api/v1/linkedin/status`` to
+ * display the current state, lets the user connect (full-page
+ * redirect to the authorization URL from
  * ``GET /api/v1/linkedin/connect``) and disconnect (POST
  * ``/api/v1/linkedin/disconnect``).
  *
- * Reads ``?linkedin=connected|error&reason=...`` on mount so the
- * LinkedIn OAuth callback can land the user on a real status.
+ * NEVER displays tokens, refresh tokens, client secrets, or other
+ * credentials. Only safe metadata is rendered: connection status,
+ * person URN, scopes, expiry timestamp.
  */
 export function LinkedInCard() {
   const api = useApi();
@@ -40,7 +42,6 @@ export function LinkedInCard() {
 
   useEffect(() => {
     refresh();
-    // Read URL flags from the LinkedIn OAuth callback.
     const params = new URLSearchParams(window.location.search);
     const flag = params.get('linkedin');
     if (flag === 'connected') {
@@ -50,7 +51,6 @@ export function LinkedInCard() {
       const detail = params.get('detail');
       toast.error('LinkedIn connection failed.', detail ? `${reason} (${detail})` : reason);
     }
-    // Clean the flag from the URL.
     if (flag) {
       const url = new URL(window.location.href);
       url.searchParams.delete('linkedin');
@@ -85,58 +85,66 @@ export function LinkedInCard() {
     }
   }
 
+  const isConnected = Boolean(status?.connected);
+
   return (
-    <div className="rounded-2xl border border-white/10 bg-zinc-950/60 p-5">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-zinc-50">LinkedIn</h2>
-          <p className="mt-1 text-sm text-zinc-400">
-            Connect your LinkedIn account to publish drafts and read your member URN.
-          </p>
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-3">
+        <div
+          className={
+            'flex h-10 w-10 items-center justify-center rounded-xl border ' +
+            (isConnected
+              ? 'border-emerald-400/30 bg-emerald-500/15 text-emerald-300'
+              : 'border-white/10 bg-white/[0.04] text-text-secondary')
+          }
+        >
+          <Linkedin className="h-5 w-5" />
         </div>
-        {loading ? (
-          <Spinner />
-        ) : status?.connected ? (
-          <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-200">
-            Connected
-          </span>
-        ) : (
-          <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-0.5 text-xs font-medium text-zinc-400">
-            Not connected
-          </span>
-        )}
+        <div>
+          <div className="flex items-center gap-2">
+            <div className="text-sm font-semibold text-zinc-100">LinkedIn account</div>
+            {loading ? (
+              <Spinner size="xs" />
+            ) : isConnected ? (
+              <Badge tone="success" size="xs" withDot>
+                <CheckCircle2 className="h-3 w-3" /> Connected
+              </Badge>
+            ) : (
+              <Badge tone="neutral" size="xs" withDot>
+                Not connected
+              </Badge>
+            )}
+          </div>
+          <p className="mt-0.5 text-sm text-text-secondary">
+            {isConnected
+              ? 'Drafts can be published to LinkedIn immediately.'
+              : 'Connect your account to publish drafts and read your member URN.'}
+          </p>
+          {isConnected && status?.expires_at ? (
+            <p className="mt-1 text-xs text-text-muted">
+              Token expires {new Date(status.expires_at).toLocaleString()}
+            </p>
+          ) : null}
+        </div>
       </div>
-
-      {status?.connected ? (
-        <dl className="mt-4 grid grid-cols-1 gap-2 text-sm">
-          {status.person_urn ? (
-            <div className="flex items-center gap-2">
-              <dt className="text-zinc-400">Person URN</dt>
-              <dd className="font-mono text-zinc-200 truncate">{status.person_urn}</dd>
-            </div>
-          ) : null}
-          {status.scope ? (
-            <div className="flex items-center gap-2">
-              <dt className="text-zinc-400">Scopes</dt>
-              <dd className="text-zinc-200 truncate">{status.scope}</dd>
-            </div>
-          ) : null}
-          {status.expires_at ? (
-            <div className="flex items-center gap-2">
-              <dt className="text-zinc-400">Token expires</dt>
-              <dd className="text-zinc-200">{new Date(status.expires_at).toLocaleString()}</dd>
-            </div>
-          ) : null}
-        </dl>
-      ) : null}
-
-      <div className="mt-4 flex items-center gap-2">
-        {status?.connected ? (
-          <Button variant="danger" onClick={() => setConfirmOpen(true)} disabled={loading || disconnecting}>
+      <div className="flex items-center gap-2">
+        {isConnected ? (
+          <Button
+            variant="outline"
+            onClick={() => setConfirmOpen(true)}
+            disabled={loading || disconnecting}
+            leftIcon={<X className="h-3.5 w-3.5" />}
+          >
             Disconnect
           </Button>
         ) : (
-          <Button onClick={handleConnect} disabled={loading || connecting} loading={connecting}>
+          <Button
+            variant="brand"
+            onClick={handleConnect}
+            disabled={loading || connecting}
+            loading={connecting}
+            leftIcon={<Linkedin className="h-4 w-4" />}
+          >
             Connect LinkedIn
           </Button>
         )}

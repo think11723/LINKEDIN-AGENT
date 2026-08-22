@@ -1,22 +1,47 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { ArrowLeft, CalendarClock, Copy, Download, Trash2, Edit3, Send, Link2, Github, Globe, BookOpen, Rocket } from 'lucide-react';
+import {
+  ArrowLeft,
+  CalendarClock,
+  Copy,
+  Download,
+  Trash2,
+  Edit3,
+  Send,
+  Save,
+  X,
+  ExternalLink,
+  Link2,
+  Check,
+  AlertCircle,
+  BadgeCheck,
+  Inbox,
+  Sparkles,
+  FileText,
+} from 'lucide-react';
 
 import { useApi } from '../services/api/backend.js';
 import { useDrafts } from '../context/DraftsContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/Card.jsx';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardFooter,
+} from '../components/ui/Card.jsx';
 import { Button } from '../components/ui/Button.jsx';
-import { Input, Textarea } from '../components/ui/Input.jsx';
+import { Input, Textarea, Field } from '../components/ui/Input.jsx';
 import { Badge } from '../components/ui/Badge.jsx';
+import { PageHeader } from '../components/ui/PageHeader.jsx';
 import { ConfirmDialog } from '../components/ConfirmDialog.jsx';
-import { EmptyState, ErrorBanner, Spinner } from '../components/ui/Feedback.jsx';
+import { ErrorBanner, Spinner, EmptyState, Skeleton } from '../components/ui/Feedback.jsx';
 import { formatDateTime } from '../utils/date.js';
+import { LinkedInPreview } from '../components/ui/LinkedInPreview.jsx';
+import { SourcePreviewCard, SourceTypeChip } from '../components/ui/SourcePreviewCard.jsx';
+import { DRAFT_STATUS_TONE, DRAFT_STATUS_LABEL, SOURCE_TONE, SOURCE_TYPE_LABEL } from '../utils/design.js';
 
-/**
- * Phase 8B P1 — DraftViewer with state-aware actions, Edit, Publish-now,
- * Cancel-schedule, and provider / model metadata.
- */
 export default function DraftViewerPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -77,8 +102,6 @@ export default function DraftViewerPage() {
   }, [api, id]);
 
   useEffect(() => {
-    // H6 - reset transient form state when the route id changes so
-    // editing another draft does not show stale form fields.
     setEditing(false);
     setScheduleTime('');
     setPublishResult(null);
@@ -86,7 +109,6 @@ export default function DraftViewerPage() {
     loadDraft();
   }, [loadDraft]);
 
-  // Find a pending scheduled job for this draft.
   useEffect(() => {
     let cancelled = false;
     async function findJob() {
@@ -109,6 +131,10 @@ export default function DraftViewerPage() {
 
   const isPublished = Boolean(draft?.published_at);
   const isEditing = editing;
+  const sourceMeta = draft?.source_metadata || null;
+  const sourceType = sourceMeta?.source_type || sourceMeta?.adapter || null;
+  const status = draft?.status || 'draft';
+  const statusTone = DRAFT_STATUS_TONE[status] || DRAFT_STATUS_TONE.draft;
 
   function startEdit() {
     if (!draft) return;
@@ -154,9 +180,6 @@ export default function DraftViewerPage() {
     } catch (err) {
       toast.error('Delete failed', err?.message);
     } finally {
-      // C2 — always reset state so the modal closes and loading clears,
-      // even on success (the navigation unmounts but the finally still
-      // runs synchronously).
       setDeleting(false);
       setConfirmDelete(false);
     }
@@ -171,8 +194,6 @@ export default function DraftViewerPage() {
       toast.error('Draft must have a title and content.');
       return;
     }
-    // H3 - reject past times client-side (the backend also rejects but
-    // a clear UI error is better than waiting for a 400 round-trip).
     const scheduled = new Date(scheduleTime);
     if (Number.isNaN(scheduled.getTime()) || scheduled.getTime() <= Date.now()) {
       toast.error('Schedule time must be in the future.');
@@ -180,8 +201,6 @@ export default function DraftViewerPage() {
     }
     setScheduling(true);
     try {
-      // Phase 8B P1-8 — use the user's local timezone (Intl default)
-      // when sending the scheduled_time string.
       const offsetMinutes = -new Date().getTimezoneOffset();
       const sign = offsetMinutes >= 0 ? '+' : '-';
       const abs = Math.abs(offsetMinutes);
@@ -258,9 +277,7 @@ export default function DraftViewerPage() {
   function handleExport() {
     if (!draft) return;
     const blob = new Blob(
-      [
-        `# ${draft.title}\n\n${draft.content}\n\n${(draft.hashtags || []).join(' ')}`,
-      ],
+      [`# ${draft.title}\n\n${draft.content}\n\n${(draft.hashtags || []).join(' ')}`],
       { type: 'text/markdown;charset=utf-8' },
     );
     const url = URL.createObjectURL(blob);
@@ -275,22 +292,18 @@ export default function DraftViewerPage() {
   if (loading && !draft) {
     return (
       <div className="space-y-4">
-        <Spinner /> Loading draft…
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-72" />
       </div>
     );
   }
 
   if (!draft) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 animate-fadeIn">
         <ErrorBanner error={error} onRetry={loadDraft} />
-        <Link
-          to="/drafts"
-          className="inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-100"
-        >
-          <ArrowLeft className="h-4 w-4" /> Back to drafts
-        </Link>
         <EmptyState
+          icon={<Inbox className="h-5 w-5" />}
           title="Draft not found"
           description="It may have been deleted or never existed."
           action={
@@ -302,237 +315,325 @@ export default function DraftViewerPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <Link
-        to="/drafts"
-        className="inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-100"
-      >
-        <ArrowLeft className="h-4 w-4" /> Back to drafts
-      </Link>
-
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold">{draft.title || 'Untitled draft'}</h1>
-          <p className="text-zinc-400">Topic: {draft.topic || '—'}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" onClick={() => handleCopy('content')}>
-            <Copy className="h-4 w-4" /> Copy
+    <div className="space-y-6 animate-fadeIn">
+      <div className="flex items-center justify-between">
+        <Link
+          to="/drafts"
+          className="inline-flex items-center gap-1.5 text-sm text-text-muted transition hover:text-zinc-100"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Back to Drafts
+        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => handleCopy('content')}
+            leftIcon={<Copy className="h-3.5 w-3.5" />}
+          >
+            Copy content
           </Button>
-          <Button size="sm" variant="outline" onClick={handleExport}>
-            <Download className="h-4 w-4" /> Export
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={handleExport}
+            leftIcon={<Download className="h-3.5 w-3.5" />}
+          >
+            Export
           </Button>
           {!isPublished ? (
-            <Button size="sm" variant="outline" onClick={startEdit} disabled={isEditing}>
-              <Edit3 className="h-4 w-4" /> Edit
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={startEdit}
+              disabled={isEditing}
+              leftIcon={<Edit3 className="h-3.5 w-3.5" />}
+            >
+              Edit
             </Button>
           ) : null}
           <Button
             size="sm"
             variant="ghost"
             onClick={() => setConfirmDelete(true)}
-            loading={deleting}
+            className="text-text-muted hover:text-rose-300"
+            leftIcon={<Trash2 className="h-3.5 w-3.5" />}
           >
-            <Trash2 className="h-4 w-4" /> Delete
+            Delete
           </Button>
         </div>
       </div>
 
+      <PageHeader
+        eyebrow="Workspace"
+        title={draft.title || 'Untitled draft'}
+        subtitle={draft.topic ? `Topic: ${draft.topic}` : undefined}
+        actions={
+          <Badge tone={statusTone.label.toLowerCase()} size="lg" withDot>
+            {DRAFT_STATUS_LABEL[status] || status}
+            {isPublished ? ' · LinkedIn' : null}
+          </Badge>
+        }
+      />
+
+      {sourceType || draft.source_url ? (
+        <SourcePreviewCard
+          compact
+          sourceType={sourceType || 'generic_webpage'}
+          title={sourceMeta?.full_name || sourceMeta?.description || SOURCE_TYPE_LABEL[sourceType] || 'Source'}
+          description={sourceMeta?.description || sourceMeta?.readme_summary || ''}
+          summary={sourceMeta?.summary || ''}
+          url={draft.source_url}
+          finalUrl={sourceMeta?.canonical_url || draft.source_url}
+        />
+      ) : null}
+
       <ErrorBanner error={error} onRetry={loadDraft} />
 
-      {/* Phase 3 — Source attribution. Only render when the draft
-          carries source metadata. Topic-mode drafts render no card. */}
-      <SourceAttribution draft={draft} />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Status</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-2 text-sm text-zinc-300 sm:grid-cols-2 md:grid-cols-3">
-            <div className="flex items-center gap-2">
-              <span className="text-zinc-400">Status</span>
-              <Badge>{draft.status || 'draft'}</Badge>
-              {isPublished ? <Badge variant="success">Published</Badge> : null}
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-zinc-400">Review</span>
-              <span className="text-zinc-200">{draft.reviewScore ?? '—'}/10</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-zinc-400">Created</span>
-              <span className="text-zinc-200">{formatDateTime(draft.createdAt)}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-zinc-400">Updated</span>
-              <span className="text-zinc-200">{formatDateTime(draft.updatedAt)}</span>
-            </div>
-            {draft.publishedAt || draft.published_at ? (
-              <div className="flex items-center gap-2">
-                <span className="text-zinc-400">Published</span>
-                <span className="text-zinc-200">
-                  {formatDateTime(draft.publishedAt || draft.published_at)}
-                </span>
-              </div>
-            ) : null}
-            {draft.linkedinPostId || draft.linkedin_post_id ? (
-              <div className="flex items-center gap-2">
-                <span className="text-zinc-400">LinkedIn</span>
-                <span className="font-mono text-xs text-zinc-200">
-                  {draft.linkedinPostId || draft.linkedin_post_id}
-                </span>
-              </div>
-            ) : null}
-          </div>
-        </CardContent>
-      </Card>
-
-      {isEditing ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Edit draft</CardTitle>
-            <CardDescription>Save to persist. Cancel reverts.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div>
-              <label className="mb-1 block text-sm">Title</label>
-              <Input value={editTitle} onChange={(event) => setEditTitle(event.target.value)} />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm">Content</label>
-              <Textarea rows={10} value={editContent} onChange={(event) => setEditContent(event.target.value)} />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm">Hashtags (space-separated)</label>
-              <Input
-                value={editHashtags}
-                onChange={(event) => setEditHashtags(event.target.value)}
-                placeholder="#ai #linkedin"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" size="sm" onClick={() => setEditing(false)} disabled={saving}>
-                Cancel
-              </Button>
-              <Button size="sm" onClick={handleSave} loading={saving}>
-                Save
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Content</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-zinc-100">
-              <div className="text-lg font-semibold">{draft.title || 'Untitled'}</div>
-              <div className="mt-3 whitespace-pre-line text-zinc-200">
-                {draft.content || <span className="text-zinc-500">No content yet.</span>}
-              </div>
-              {(draft.hashtags || []).length ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {draft.hashtags.map((tag) => (
-                    <Badge key={tag}>{tag}</Badge>
-                  ))}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2 space-y-6">
+          {isEditing ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Edit draft</CardTitle>
+                <CardDescription>Save to persist. Cancel reverts.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Field id="edit-title" label="Title" required>
+                  <Input
+                    id="edit-title"
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                  />
+                </Field>
+                <Field id="edit-content" label="Content" required>
+                  <Textarea
+                    id="edit-content"
+                    rows={10}
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                  />
+                </Field>
+                <Field id="edit-hashtags" label="Hashtags" hint="Space-separated. # is added automatically.">
+                  <Input
+                    id="edit-hashtags"
+                    value={editHashtags}
+                    onChange={(e) => setEditHashtags(e.target.value)}
+                    placeholder="#ai #linkedin"
+                  />
+                </Field>
+              </CardContent>
+              <CardFooter>
+                <Button
+                  variant="ghost"
+                  onClick={() => setEditing(false)}
+                  disabled={saving}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="brand"
+                  onClick={handleSave}
+                  loading={saving}
+                  leftIcon={<Save className="h-4 w-4" />}
+                >
+                  Save changes
+                </Button>
+              </CardFooter>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>LinkedIn preview</CardTitle>
+                    <CardDescription>
+                      How this post will look when published.
+                    </CardDescription>
+                  </div>
+                  <BadgeCheck className="h-4 w-4 text-sky-400" />
                 </div>
-              ) : null}
-            </div>
-            {draft.metadata?.llm || draft.llm ? (
-              <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs text-zinc-500">
-                Generated by{' '}
-                <span className="text-zinc-300">
-                  {(draft.metadata?.llm || draft.llm).writer_provider}/
-                  {(draft.metadata?.llm || draft.llm).writer_model}
+              </CardHeader>
+              <CardContent>
+                <LinkedInPreview
+                  authorName="You"
+                  authorHeadline="on LinkedIn"
+                  content={draft.content}
+                  hashtags={draft.hashtags || []}
+                  sourceAttribution={
+                    draft.source_url
+                      ? {
+                          label: SOURCE_TYPE_LABEL[sourceType] || 'Source',
+                          title: sourceMeta?.full_name || sourceMeta?.description,
+                          url: sourceMeta?.canonical_url || draft.source_url,
+                        }
+                      : null
+                  }
+                />
+              </CardContent>
+            </Card>
+          )}
+
+          {!isPublished ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Schedule</CardTitle>
+                <CardDescription>Pick a date and time. We send a TZ-aware ISO string.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Input
+                  type="datetime-local"
+                  value={scheduleTime}
+                  onChange={(event) => setScheduleTime(event.target.value)}
+                />
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <div className="text-text-muted">
+                    Timezone:{' '}
+                    <span className="text-zinc-100">
+                      {Intl.DateTimeFormat().resolvedOptions().timeZone}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    {existingJobId ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setConfirmScheduleCancel(true)}
+                        loading={scheduling}
+                      >
+                        Cancel existing schedule
+                      </Button>
+                    ) : null}
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleSchedule}
+                      loading={scheduling}
+                      leftIcon={<CalendarClock className="h-3.5 w-3.5" />}
+                    >
+                      Schedule
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+        </div>
+
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <DetailRow label="Status">
+                <Badge tone={statusTone.label.toLowerCase()} size="sm" withDot>
+                  {DRAFT_STATUS_LABEL[status] || status}
+                </Badge>
+                {isPublished ? <Badge tone="success" size="sm">Published</Badge> : null}
+              </DetailRow>
+              <DetailRow label="Review">
+                <span className="text-zinc-100">
+                  {typeof draft.reviewScore === 'number' ? `${draft.reviewScore}/10` : '—'}
                 </span>
+              </DetailRow>
+              <DetailRow label="Created">
+                <span className="text-zinc-100">{formatDateTime(draft.createdAt || draft.created_at)}</span>
+              </DetailRow>
+              <DetailRow label="Updated">
+                <span className="text-zinc-100">{formatDateTime(draft.updatedAt || draft.updated_at)}</span>
+              </DetailRow>
+              {draft.publishedAt || draft.published_at ? (
+                <DetailRow label="Published">
+                  <span className="text-zinc-100">
+                    {formatDateTime(draft.publishedAt || draft.published_at)}
+                  </span>
+                </DetailRow>
+              ) : null}
+              {draft.linkedinPostId || draft.linkedin_post_id ? (
+                <DetailRow label="LinkedIn">
+                  <span className="font-mono text-xs text-zinc-100">
+                    {draft.linkedinPostId || draft.linkedin_post_id}
+                  </span>
+                </DetailRow>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          {draft.review_feedback ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Reviewer feedback</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-text-secondary">{draft.review_feedback}</p>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {draft.metadata?.llm || draft.llm ? (
+            <Card variant="muted">
+              <CardContent className="space-y-2 text-xs text-text-muted">
+                <div className="font-semibold text-text-secondary">Generated by</div>
+                <div>
+                  Writer:{' '}
+                  <span className="text-zinc-200">
+                    {(draft.metadata?.llm || draft.llm).writer_provider}/
+                    {(draft.metadata?.llm || draft.llm).writer_model}
+                  </span>
+                </div>
                 {draft.metadata?.llm?.reviewer_provider ? (
-                  <>
-                    {' '}
-                    · reviewed by{' '}
-                    <span className="text-zinc-300">
+                  <div>
+                    Reviewer:{' '}
+                    <span className="text-zinc-200">
                       {draft.metadata.llm.reviewer_provider}/
                       {draft.metadata.llm.reviewer_model}
                     </span>
-                  </>
+                  </div>
                 ) : null}
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-      )}
+              </CardContent>
+            </Card>
+          ) : null}
 
-      {!isPublished ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Schedule</CardTitle>
-            <CardDescription>Pick a date + time. We send a TZ-aware ISO string.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Input
-              type="datetime-local"
-              value={scheduleTime}
-              onChange={(event) => setScheduleTime(event.target.value)}
-            />
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-sm text-zinc-400">
-                Timezone:{' '}
-                <span className="text-zinc-300">
-                  {Intl.DateTimeFormat().resolvedOptions().timeZone}
-                </span>
-              </div>
-              <div className="flex gap-2">
-                {existingJobId ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setConfirmScheduleCancel(true)}
-                    loading={scheduling}
-                  >
-                    Cancel existing schedule
-                  </Button>
-                ) : null}
-                <Button size="sm" onClick={handleSchedule} loading={scheduling}>
-                  <CalendarClock className="h-4 w-4" /> Schedule
+          {!isPublished ? (
+            <Card>
+              <CardContent>
+                <Button
+                  variant="brand"
+                  size="lg"
+                  className="w-full"
+                  onClick={() => setPublishOpen(true)}
+                  leftIcon={<Send className="h-4 w-4" />}
+                >
+                  Publish to LinkedIn
                 </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
+                <p className="mt-2 text-xs text-text-muted">
+                  Posts immediately. LinkedIn must be connected.
+                </p>
+              </CardContent>
+            </Card>
+          ) : null}
 
-      {!isPublished ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Publish now</CardTitle>
-            <CardDescription>Posts to LinkedIn immediately (must be connected).</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={() => setPublishOpen(true)}>
-              <Send className="h-4 w-4" /> Publish to LinkedIn
-            </Button>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {publishResult ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Published</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm text-zinc-300">
-            <div>
-              LinkedIn post id:{' '}
-              <span className="font-mono text-zinc-200">
-                {publishResult.linkedin_post_id}
-              </span>
-            </div>
-            {publishResult.published_at ? (
-              <div>Published at: {formatDateTime(publishResult.published_at)}</div>
-            ) : null}
-          </CardContent>
-        </Card>
-      ) : null}
+          {publishResult ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Published</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm text-zinc-300">
+                <div>
+                  LinkedIn post id:{' '}
+                  <span className="font-mono text-zinc-200">
+                    {publishResult.linkedin_post_id}
+                  </span>
+                </div>
+                {publishResult.published_at ? (
+                  <div>Published at: {formatDateTime(publishResult.published_at)}</div>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
+        </div>
+      </div>
 
       <ConfirmDialog
         open={confirmDelete}
@@ -550,7 +651,6 @@ export default function DraftViewerPage() {
         title="Cancel the scheduled job?"
         description="The draft itself is preserved; only the pending job is removed."
         confirmLabel="Cancel schedule"
-        danger
         confirming={scheduling}
         onConfirm={handleCancelSchedule}
         onCancel={() => setConfirmScheduleCancel(false)}
@@ -570,9 +670,11 @@ export default function DraftViewerPage() {
         onCancel={() => setPublishOpen(false)}
       >
         {publishError ? (
-          <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-3 text-sm text-rose-200">
-            <div className="font-medium">LinkedIn rejected the post.</div>
-            <div className="mt-1 text-rose-300/80">{publishError.message}</div>
+          <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/[0.06] p-3 text-sm text-rose-200">
+            <div className="flex items-center gap-2 font-medium">
+              <AlertCircle className="h-4 w-4" /> LinkedIn rejected the post.
+            </div>
+            <div className="mt-1 text-rose-200/80">{publishError.message}</div>
           </div>
         ) : null}
       </ConfirmDialog>
@@ -580,84 +682,11 @@ export default function DraftViewerPage() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Phase 3 / Source attribution card
-// ---------------------------------------------------------------------------
-
-const SOURCE_TYPE_LABEL = {
-  github_repository: 'GitHub Repository',
-  github_readme: 'GitHub README',
-  blog_article: 'Blog Article',
-  documentation: 'Documentation',
-  product_page: 'Product Announcement',
-  generic_webpage: 'Web Article',
-};
-
-function SourceTypeIcon({ sourceType, className = 'h-4 w-4' }) {
-  switch (sourceType) {
-    case 'github_repository':
-    case 'github_readme':
-      return <Github className={className} />;
-    case 'documentation':
-      return <BookOpen className={className} />;
-    case 'product_page':
-      return <Rocket className={className} />;
-    case 'blog_article':
-    case 'generic_webpage':
-    default:
-      return <Globe className={className} />;
-  }
-}
-
-function SourceAttribution({ draft }) {
-  const sourceUrl = draft?.source_url;
-  const sourceMeta = draft?.source_metadata || {};
-  if (!sourceUrl && !sourceMeta.url) return null;
-  const sourceType = sourceMeta.source_type || sourceMeta.adapter || '';
-  const label = SOURCE_TYPE_LABEL[sourceType] || 'Web Article';
-  const title =
-    sourceMeta.full_name ||
-    sourceMeta.title ||
-    sourceMeta.description ||
-    sourceUrl ||
-    '';
-  const description = sourceMeta.description || sourceMeta.readme_summary || '';
-  const finalUrl =
-    sourceMeta.canonical_url || sourceMeta.url || sourceUrl || '';
-
+function DetailRow({ label, children }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Link2 className="h-4 w-4 text-zinc-400" />
-          Inspired by
-        </CardTitle>
-        <CardDescription>The source that inspired this draft.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex items-center gap-2 text-zinc-200">
-          <SourceTypeIcon sourceType={sourceType} className="h-4 w-4 text-zinc-300" />
-          <span className="text-sm font-medium">{label}</span>
-        </div>
-        {title ? (
-          <div className="text-lg font-semibold text-white">{title}</div>
-        ) : null}
-        {description && description !== title ? (
-          <div className="text-sm text-zinc-300">{description}</div>
-        ) : null}
-        {finalUrl ? (
-          <div>
-            <a
-              href={finalUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-sm text-zinc-200 underline decoration-dotted hover:text-white"
-            >
-              🔗 View source
-            </a>
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-text-muted">{label}</span>
+      <div className="flex items-center gap-1.5">{children}</div>
+    </div>
   );
 }

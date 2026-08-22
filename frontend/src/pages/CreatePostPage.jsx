@@ -1,58 +1,92 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, ArrowRight, Link2, FileText, Github, Globe, BookOpen, Rocket, CheckCircle2 } from 'lucide-react';
+import {
+  Sparkles,
+  ArrowRight,
+  Link2,
+  FileText,
+  Github,
+  CheckCircle2,
+  Wand2,
+  Eye,
+  AlertCircle,
+  RotateCcw,
+  Lightbulb,
+} from 'lucide-react';
 
 import { useApi } from '../services/api/backend.js';
 import { useToast } from '../context/ToastContext.jsx';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/Card.jsx';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardFooter,
+} from '../components/ui/Card.jsx';
 import { Button } from '../components/ui/Button.jsx';
-import { Input, Textarea } from '../components/ui/Input.jsx';
-import { Spinner, ErrorBanner, EmptyState } from '../components/ui/Feedback.jsx';
+import { Input, Textarea, Field } from '../components/ui/Input.jsx';
 import { Badge } from '../components/ui/Badge.jsx';
+import { PageHeader } from '../components/ui/PageHeader.jsx';
+import { SegmentedTabs } from '../components/ui/SegmentedTabs.jsx';
+import { StepProgress } from '../components/ui/StepProgress.jsx';
+import { LinkedInPreview } from '../components/ui/LinkedInPreview.jsx';
+import { SourcePreviewCard } from '../components/ui/SourcePreviewCard.jsx';
+import { ErrorBanner, Spinner, EmptyState } from '../components/ui/Feedback.jsx';
 
-/**
- * Phase 3 — Create Post page.
- *
- * The page now has two mutually-exclusive modes:
- *
- *   * Topic mode (legacy) — user types a topic, server runs the
- *     existing writer+reviewer pipeline. No network fetch, no source
- *     metadata persisted.
- *
- *   * Source mode — user pastes a public URL. The server fetches the
- *     URL through the SSRF guard + adapter layer, classifies the
- *     source, and shows a preview card. The user confirms and we run
- *     the writer+reviewer pipeline with the source context attached.
- *     Source metadata (URL, title, description, source_type) is
- *     persisted on the resulting draft.
- *
- * State machine (honest four-state model retained):
- *   idle → analyzing → analyzed → generating → success | failure
- */
+const MODE_OPTIONS = [
+  {
+    value: 'topic',
+    label: 'From Topic',
+    description: 'Describe the post you want and let our writer draft it.',
+    icon: <FileText className="h-5 w-5" />,
+  },
+  {
+    value: 'source',
+    label: 'From URL',
+    description: 'Paste a GitHub repo, blog post, or docs page to summarize.',
+    icon: <Link2 className="h-5 w-5" />,
+  },
+];
+
+const TOPIC_PROGRESS_STEPS = [
+  { id: 'plan', label: 'Planning post', hint: 'Intent, audience, tone' },
+  { id: 'write', label: 'Writing draft', hint: 'LinkedIn-native format' },
+  { id: 'review', label: 'Reviewing content', hint: 'Quality + score' },
+];
+
+const SOURCE_PROGRESS_STEPS = [
+  { id: 'fetch', label: 'Fetching source', hint: 'SSRF-safe HTTP' },
+  { id: 'analyze', label: 'Analyzing content', hint: 'Extracting insights' },
+  { id: 'write', label: 'Writing draft', hint: 'LinkedIn-native format' },
+  { id: 'review', label: 'Reviewing content', hint: 'Quality + score' },
+];
+
 export default function CreatePostPage() {
   const api = useApi();
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const [mode, setMode] = useState('topic'); // 'topic' | 'source'
+  const [mode, setMode] = useState('topic');
 
   // Topic mode state.
   const [topic, setTopic] = useState('');
+  const [intent, setIntent] = useState('');
+  const [audience, setAudience] = useState('');
+  const [tone, setTone] = useState('');
   const [topicSubmitting, setTopicSubmitting] = useState(false);
   const [topicError, setTopicError] = useState(null);
   const [topicResult, setTopicResult] = useState(null);
 
   // Source mode state.
   const [sourceUrl, setSourceUrl] = useState('');
-  const [sourceStage, setSourceStage] = useState('idle'); // idle | analyzing | analyzed | generating | failure
+  const [sourceOptionalTopic, setSourceOptionalTopic] = useState('');
+  const [sourceStage, setSourceStage] = useState('idle');
   const [sourceError, setSourceError] = useState(null);
   const [sourcePreview, setSourcePreview] = useState(null);
   const [sourceResult, setSourceResult] = useState(null);
-  const [optionalTopic, setOptionalTopic] = useState('');
 
-  // ------------------------------------------------------------------
-  // Topic mode
-  // ------------------------------------------------------------------
+  // ---- Topic mode ----
   async function handleTopicGenerate() {
     if (!topic.trim()) {
       toast.error('Please enter a topic.');
@@ -60,10 +94,16 @@ export default function CreatePostPage() {
     }
     setTopicSubmitting(true);
     setTopicError(null);
+    setTopicResult(null);
     try {
-      const response = await api.generateContent({ topic: topic.trim() });
+      const response = await api.generateContent({
+        topic: topic.trim(),
+        intent: intent || undefined,
+        audience: audience || undefined,
+        tone: tone || undefined,
+      });
       setTopicResult(response);
-      toast.success('Content generated successfully.');
+      toast.success('Draft generated.');
     } catch (err) {
       setTopicError(err);
       toast.error('Generation failed', err?.message);
@@ -72,9 +112,7 @@ export default function CreatePostPage() {
     }
   }
 
-  // ------------------------------------------------------------------
-  // Source mode — analyze
-  // ------------------------------------------------------------------
+  // ---- Source mode: analyze ----
   async function handleAnalyzeSource() {
     if (!sourceUrl.trim()) {
       toast.error('Please enter a URL.');
@@ -83,6 +121,7 @@ export default function CreatePostPage() {
     setSourceStage('analyzing');
     setSourceError(null);
     setSourcePreview(null);
+    setSourceResult(null);
     try {
       const preview = await api.previewSource(sourceUrl.trim());
       setSourcePreview(preview);
@@ -94,9 +133,7 @@ export default function CreatePostPage() {
     }
   }
 
-  // ------------------------------------------------------------------
-  // Source mode — generate draft from the analyzed source
-  // ------------------------------------------------------------------
+  // ---- Source mode: generate ----
   async function handleSourceGenerate() {
     if (!sourcePreview) {
       toast.error('Analyze a source first.');
@@ -104,14 +141,15 @@ export default function CreatePostPage() {
     }
     setSourceStage('generating');
     setSourceError(null);
+    setSourceResult(null);
     try {
       const response = await api.generateContent({
         source_url: sourcePreview.source?.url || sourceUrl.trim(),
-        topic: optionalTopic.trim() || undefined,
+        topic: sourceOptionalTopic.trim() || undefined,
       });
       setSourceResult(response);
       setSourceStage('success');
-      toast.success('Content generated successfully.');
+      toast.success('Draft generated.');
     } catch (err) {
       setSourceError(err);
       setSourceStage('failure');
@@ -119,68 +157,68 @@ export default function CreatePostPage() {
     }
   }
 
-  function resetSourceMode() {
+  function resetSource() {
     setSourceStage('idle');
     setSourceError(null);
     setSourcePreview(null);
     setSourceResult(null);
   }
 
-  function switchMode(nextMode) {
-    if (nextMode === mode) return;
-    setMode(nextMode);
-    setSourceError(null);
-    setTopicError(null);
-  }
-
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-semibold">Create Post</h1>
-        <p className="text-zinc-400">
-          Generate a LinkedIn draft from a topic or from a public URL.
-        </p>
-      </div>
+    <div className="space-y-6 animate-fadeIn">
+      <PageHeader
+        eyebrow="Workspace"
+        title="Create LinkedIn Post"
+        subtitle="Generate a draft from a topic or a public URL. The pipeline is the same — pick the input that fits how you think."
+      />
 
-      {/* Mode selector */}
-      <div className="inline-flex rounded-xl border border-white/10 bg-white/[0.03] p-1">
-        <ModeTab
-          active={mode === 'topic'}
-          onClick={() => switchMode('topic')}
-          icon={<FileText className="h-4 w-4" />}
-          label="From Topic"
-        />
-        <ModeTab
-          active={mode === 'source'}
-          onClick={() => switchMode('source')}
-          icon={<Link2 className="h-4 w-4" />}
-          label="From URL"
-        />
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Choose an input</CardTitle>
+          <CardDescription>Switch any time — your progress in each mode is independent.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <SegmentedTabs value={mode} onChange={setMode} options={MODE_OPTIONS} />
+        </CardContent>
+      </Card>
 
       {mode === 'topic' ? (
         <TopicMode
           topic={topic}
           setTopic={setTopic}
+          intent={intent}
+          setIntent={setIntent}
+          audience={audience}
+          setAudience={setAudience}
+          tone={tone}
+          setTone={setTone}
           onGenerate={handleTopicGenerate}
           submitting={topicSubmitting}
           error={topicError}
           result={topicResult}
           onOpen={() => navigate(`/drafts/${topicResult.draft_id}`)}
+          onReset={() => {
+            setTopic('');
+            setIntent('');
+            setAudience('');
+            setTone('');
+            setTopicResult(null);
+            setTopicError(null);
+          }}
         />
       ) : (
         <SourceMode
           url={sourceUrl}
           setUrl={setSourceUrl}
-          optionalTopic={optionalTopic}
-          setOptionalTopic={setOptionalTopic}
+          optionalTopic={sourceOptionalTopic}
+          setOptionalTopic={setSourceOptionalTopic}
           stage={sourceStage}
           preview={sourcePreview}
           error={sourceError}
           result={sourceResult}
           onAnalyze={handleAnalyzeSource}
           onGenerate={handleSourceGenerate}
-          onReset={resetSourceMode}
+          onReset={resetSource}
           onOpen={() => navigate(`/drafts/${sourceResult.draft_id}`)}
         />
       )}
@@ -188,102 +226,136 @@ export default function CreatePostPage() {
   );
 }
 
-function ModeTab({ active, onClick, icon, label }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        'inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ' +
-        (active
-          ? 'bg-white/10 text-white'
-          : 'text-zinc-400 hover:text-zinc-200')
-      }
-      aria-pressed={active}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
-function SourceTypeIcon({ sourceType }) {
-  switch (sourceType) {
-    case 'github_repository':
-    case 'github_readme':
-      return <Github className="h-4 w-4" />;
-    case 'documentation':
-      return <BookOpen className="h-4 w-4" />;
-    case 'product_page':
-      return <Rocket className="h-4 w-4" />;
-    case 'blog_article':
-    case 'generic_webpage':
-    default:
-      return <Globe className="h-4 w-4" />;
-  }
-}
-
 // ---------------------------------------------------------------------------
-// Topic mode (legacy / unchanged behavior)
+// Topic mode
 // ---------------------------------------------------------------------------
 
-function TopicMode({ topic, setTopic, onGenerate, submitting, error, result, onOpen }) {
+function TopicMode({
+  topic,
+  setTopic,
+  intent,
+  setIntent,
+  audience,
+  setAudience,
+  tone,
+  setTone,
+  onGenerate,
+  submitting,
+  error,
+  result,
+  onOpen,
+  onReset,
+}) {
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_1.1fr]">
+    <div className="grid gap-6 lg:grid-cols-2">
       <Card>
         <CardHeader>
           <CardTitle>Topic</CardTitle>
-          <CardDescription>Describe what you want to publish.</CardDescription>
+          <CardDescription>What do you want to post about?</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <label className="mb-2 block text-sm">Topic</label>
-            <Input
-              placeholder="AI workflows for LinkedIn creators"
+          <Field id="topic" label="Topic" required>
+            <Textarea
+              id="topic"
+              rows={4}
               value={topic}
-              onChange={(event) => setTopic(event.target.value)}
+              onChange={(e) => setTopic(e.target.value)}
+              placeholder="e.g. Why async workflows matter for AI agents"
               disabled={submitting}
             />
+          </Field>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field id="intent" label="Intent">
+              <Input
+                id="intent"
+                placeholder="Educate, announce…"
+                value={intent}
+                onChange={(e) => setIntent(e.target.value)}
+                disabled={submitting}
+              />
+            </Field>
+            <Field id="audience" label="Audience">
+              <Input
+                id="audience"
+                placeholder="Engineers, founders…"
+                value={audience}
+                onChange={(e) => setAudience(e.target.value)}
+                disabled={submitting}
+              />
+            </Field>
+            <Field id="tone" label="Tone">
+              <Input
+                id="tone"
+                placeholder="Professional, candid…"
+                value={tone}
+                onChange={(e) => setTone(e.target.value)}
+                disabled={submitting}
+              />
+            </Field>
           </div>
-          <Button
-            onClick={onGenerate}
-            disabled={submitting}
-            loading={submitting}
-            className="w-full"
-          >
-            <Sparkles className="h-4 w-4" />
-            {submitting ? 'Generating…' : 'Generate draft'}
-          </Button>
-          <p className="text-xs text-zinc-500">
-            The backend runs a single synchronous call today. Future work can
-            stream per-node progress (SSE / WebSocket) when the workflow
-            becomes long-running.
-          </p>
+
+          {error ? <ErrorBanner error={error} onRetry={onGenerate} /> : null}
+
+          {submitting ? (
+            <ProgressPanel
+              steps={TOPIC_PROGRESS_STEPS}
+              activeId="write"
+              description="Creating your LinkedIn post…"
+            />
+          ) : null}
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="brand"
+              size="lg"
+              onClick={onGenerate}
+              disabled={submitting || !topic.trim()}
+              loading={submitting}
+              leftIcon={!submitting ? <Sparkles className="h-4 w-4" /> : null}
+            >
+              {submitting ? 'Generating…' : 'Generate LinkedIn Post'}
+            </Button>
+            {result || topic ? (
+              <Button
+                variant="ghost"
+                size="md"
+                onClick={onReset}
+                disabled={submitting}
+                leftIcon={<RotateCcw className="h-3.5 w-3.5" />}
+              >
+                Reset
+              </Button>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Output</CardTitle>
+          <CardTitle>Preview</CardTitle>
           <CardDescription>
-            {error ? 'Generation failed. See the error below.' : result ? 'Draft generated. Open the viewer to edit, schedule, or publish.' : 'Submit a topic to generate a draft.'}
+            {result
+              ? 'Draft ready. Open the viewer to edit, schedule, or publish.'
+              : submitting
+              ? 'Generating…'
+              : 'The generated draft will appear here.'}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <ErrorBanner error={error} />
-          {submitting ? (
-            <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-zinc-300">
-              <Spinner /> Generating draft — typically 30–90s.
-            </div>
-          ) : null}
+        <CardContent>
           {result ? (
-            <ResultPanel result={result} onOpen={onOpen} />
-          ) : !error ? (
+            <ResultPreview result={result} onOpen={onOpen} />
+          ) : submitting ? (
+            <div className="space-y-3">
+              <SkeletonPost />
+            </div>
+          ) : (
             <EmptyState
-              title="Nothing to show yet"
-              description="The generated draft will appear here."
+              icon={<Lightbulb className="h-5 w-5" />}
+              title="Ready when you are"
+              description="Type a topic on the left and click Generate. The whole pipeline usually takes 30–90 seconds."
             />
-          ) : null}
+          )}
         </CardContent>
       </Card>
     </div>
@@ -291,7 +363,7 @@ function TopicMode({ topic, setTopic, onGenerate, submitting, error, result, onO
 }
 
 // ---------------------------------------------------------------------------
-// Source mode (Phase 3)
+// Source mode
 // ---------------------------------------------------------------------------
 
 function SourceMode({
@@ -312,112 +384,130 @@ function SourceMode({
   const isAnalyzed = stage === 'analyzed';
   const isGenerating = stage === 'generating';
   const isSuccess = stage === 'success';
-  const isFailure = stage === 'failure';
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_1.1fr]">
+    <div className="grid gap-6 lg:grid-cols-2">
       <Card>
         <CardHeader>
           <CardTitle>Source URL</CardTitle>
           <CardDescription>
-            Provide a public URL — a GitHub repository, blog post, or documentation page.
+            Public URLs only — GitHub repos, blog posts, documentation, product pages.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <label className="mb-2 block text-sm">URL</label>
+          <Field
+            id="source-url"
+            label="URL"
+            required
+            hint="https://github.com/owner/repo · https://example.com/article · https://docs.example.com/..."
+          >
             <Input
+              id="source-url"
               type="url"
-              placeholder="https://github.com/owner/repository"
               value={url}
-              onChange={(event) => setUrl(event.target.value)}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://github.com/owner/repository"
               disabled={isAnalyzing || isAnalyzed || isGenerating || isSuccess}
+              leftIcon={<Link2 className="h-3.5 w-3.5" />}
             />
-          </div>
+          </Field>
+
           {isAnalyzed || isSuccess ? (
-            <div>
-              <label className="mb-2 block text-sm">
-                Optional framing hint for the writer
-              </label>
+            <Field
+              id="framing-hint"
+              label="Optional framing hint"
+              hint="A short angle the writer should focus on."
+            >
               <Textarea
+                id="framing-hint"
                 rows={2}
-                placeholder="e.g. focus on the architecture"
                 value={optionalTopic}
-                onChange={(event) => setOptionalTopic(event.target.value)}
+                onChange={(e) => setOptionalTopic(e.target.value)}
+                placeholder="e.g. focus on the architecture"
                 disabled={isGenerating || isSuccess}
               />
-            </div>
+            </Field>
           ) : null}
 
-          {!isSuccess ? (
-            <div className="flex flex-wrap gap-2">
-              {!isAnalyzed ? (
-                <Button
-                  onClick={onAnalyze}
-                  disabled={!url.trim() || isAnalyzing}
-                  loading={isAnalyzing}
-                  className="flex-1"
-                >
-                  {isAnalyzing ? 'Analyzing…' : 'Analyze Source'}
-                </Button>
-              ) : (
-                <>
-                  <Button
-                    onClick={onGenerate}
-                    disabled={isGenerating}
-                    loading={isGenerating}
-                    className="flex-1"
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    {isGenerating ? 'Generating…' : 'Generate LinkedIn Post'}
-                  </Button>
-                  <Button
-                    onClick={onReset}
-                    variant="outline"
-                    disabled={isGenerating}
-                  >
-                    Use a different URL
-                  </Button>
-                </>
-              )}
-            </div>
+          {error ? <ErrorBanner error={error} onRetry={isAnalyzed ? onGenerate : onAnalyze} /> : null}
+
+          {isGenerating ? (
+            <ProgressPanel
+              steps={SOURCE_PROGRESS_STEPS}
+              activeId="write"
+              description="Creating your LinkedIn post from the source…"
+            />
           ) : null}
 
-          <p className="text-xs text-zinc-500">
-            Only public http(s) URLs are accepted. The source is fetched through
-            an SSRF-safe network guard and never persisted beyond a small
-            metadata blob.
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {!isAnalyzed && !isSuccess ? (
+              <Button
+                variant="brand"
+                size="lg"
+                onClick={onAnalyze}
+                disabled={!url.trim() || isAnalyzing}
+                loading={isAnalyzing}
+                leftIcon={!isAnalyzing ? <Wand2 className="h-4 w-4" /> : null}
+              >
+                {isAnalyzing ? 'Analyzing…' : 'Analyze Source'}
+              </Button>
+            ) : null}
+            {isAnalyzed ? (
+              <Button
+                variant="brand"
+                size="lg"
+                onClick={onGenerate}
+                disabled={isGenerating}
+                loading={isGenerating}
+                leftIcon={!isGenerating ? <Sparkles className="h-4 w-4" /> : null}
+              >
+                {isGenerating ? 'Generating…' : 'Generate LinkedIn Post'}
+              </Button>
+            ) : null}
+            {isAnalyzed || isSuccess ? (
+              <Button
+                variant="ghost"
+                size="md"
+                onClick={onReset}
+                disabled={isGenerating}
+                leftIcon={<RotateCcw className="h-3.5 w-3.5" />}
+              >
+                Use a different URL
+              </Button>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Source Preview</CardTitle>
+          <CardTitle>Source preview</CardTitle>
           <CardDescription>
-            {stage === 'idle' && 'Paste a URL above and click "Analyze Source".'}
+            {stage === 'idle' && 'Paste a URL on the left and click Analyze.'}
             {isAnalyzing && 'Fetching the source safely…'}
             {isAnalyzed && 'Source found. Review and generate a draft.'}
-            {isGenerating && 'Drafting the LinkedIn post — typically 30–90s.'}
+            {isGenerating && 'Drafting the LinkedIn post — usually 30–90s.'}
             {isSuccess && 'Draft generated. Open the viewer to edit, schedule, or publish.'}
-            {isFailure && 'Could not read this source. See the error below.'}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <ErrorBanner error={error} onRetry={isAnalyzed ? onGenerate : onAnalyze} />
+        <CardContent>
           {isAnalyzing ? (
-            <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-zinc-300">
-              <Spinner /> Reading the source — typically 5–15s.
-            </div>
-          ) : null}
-          {isAnalyzed && preview ? (
-            <SourcePreviewCard preview={preview} />
-          ) : null}
-          {isSuccess && result ? (
-            <ResultPanel result={result} onOpen={onOpen} />
-          ) : null}
-          {stage === 'idle' ? (
+            <SourceAnalyzingSkeleton />
+          ) : isAnalyzed && preview ? (
+            <SourcePreviewCard
+              sourceType={preview.source_type}
+              title={preview.source?.title}
+              description={preview.source?.description}
+              summary={preview.source?.summary}
+              keyFacts={preview.source?.key_facts || []}
+              url={preview.source?.url}
+              finalUrl={preview.source?.final_url}
+            />
+          ) : isSuccess && result ? (
+            <ResultPreview result={result} onOpen={onOpen} />
+          ) : stage === 'idle' ? (
             <EmptyState
+              icon={<Github className="h-5 w-5" />}
               title="No source analyzed yet"
               description="The source preview will appear here once you click Analyze."
             />
@@ -428,102 +518,96 @@ function SourceMode({
   );
 }
 
-function SourcePreviewCard({ preview }) {
-  const source = preview?.source || {};
-  const label = preview?.source_label || source.type || 'Source';
-  const title = source.title || 'Untitled source';
-  const summary = source.summary || source.description || '';
-  const facts = Array.isArray(source.key_facts) ? source.key_facts : [];
-  const sourceUrl = source.final_url || source.url || '';
+// ---------------------------------------------------------------------------
+// Result preview — LinkedIn-style card on the right side
+// ---------------------------------------------------------------------------
+
+function ResultPreview({ result, onOpen }) {
+  const post = result.final_post || {};
+  const sourceUrl = result.source_url;
   return (
-    <div className="space-y-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4">
-      <div className="flex items-center gap-2 text-emerald-300">
-        <CheckCircle2 className="h-4 w-4" />
-        <span className="text-sm font-medium">Source found</span>
-      </div>
-      <div className="flex items-center gap-2 text-zinc-200">
-        <SourceTypeIcon sourceType={source.type} />
-        <span className="text-base font-semibold">{label}</span>
-      </div>
-      <div>
-        <div className="text-lg font-semibold text-white">{title}</div>
-        {summary ? (
-          <div className="mt-1 text-sm text-zinc-300">{summary}</div>
-        ) : null}
-      </div>
-      {facts.length ? (
-        <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-zinc-300">
-          {facts.slice(0, 5).map((fact, idx) => (
-            <li key={idx}>{fact}</li>
-          ))}
-        </ul>
-      ) : null}
-      {sourceUrl ? (
-        <div className="text-xs text-zinc-400">
-          Source:{' '}
-          <a
-            href={sourceUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-zinc-200 underline decoration-dotted hover:text-white"
-          >
-            {sourceUrl}
-          </a>
+    <div className="space-y-4 animate-fadeIn">
+      <LinkedInPreview
+        authorName="You"
+        authorHeadline="on LinkedIn"
+        content={post.content}
+        hashtags={post.hashtags || []}
+        sourceAttribution={sourceUrl ? { label: 'Source', url: sourceUrl } : null}
+      />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-xs text-text-muted">
+          {result.iterations ? `${result.iterations} iteration${result.iterations === 1 ? '' : 's'}` : null}
+          {result.review_feedback ? ` · ${result.review_feedback}` : null}
         </div>
-      ) : null}
+        <Button variant="brand" size="md" onClick={onOpen} rightIcon={<ArrowRight className="h-4 w-4" />}>
+          Open viewer
+        </Button>
+      </div>
     </div>
   );
 }
 
-function ResultPanel({ result, onOpen }) {
+// ---------------------------------------------------------------------------
+// Generation progress panel
+// ---------------------------------------------------------------------------
+
+function ProgressPanel({ steps, activeId, description }) {
   return (
-    <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-      <div>
-        <div className="text-sm text-zinc-400">Title</div>
-        <div className="text-xl font-semibold text-white">
-          {result.final_post?.title || 'Untitled draft'}
-        </div>
-      </div>
-      <div>
-        <div className="text-sm text-zinc-400">Content</div>
-        <div className="whitespace-pre-line text-zinc-200">
-          {result.final_post?.content || ''}
-        </div>
-      </div>
-      <div>
-        <div className="text-sm text-zinc-400">Hashtags</div>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {(result.final_post?.hashtags ?? []).map((tag) => (
-            <Badge key={tag}>{tag}</Badge>
-          ))}
-        </div>
-      </div>
-      {result.source_url ? (
-        <div className="text-xs text-zinc-500">
-          Inspired by:{' '}
-          <a
-            href={result.source_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-zinc-300 underline decoration-dotted"
-          >
-            {result.source_url}
-          </a>
-        </div>
-      ) : null}
-      {result.review_feedback ? (
+    <div className="panel-inset flex flex-col gap-3 p-4">
+      <div className="flex items-center gap-3">
+        <Spinner size="md" />
         <div>
-          <div className="text-sm text-zinc-400">Reviewer feedback</div>
-          <div className="text-zinc-200">{result.review_feedback}</div>
+          <div className="text-sm font-medium text-white">{description}</div>
+          <div className="text-xs text-text-muted">Backend usually takes 30–90 seconds.</div>
         </div>
-      ) : null}
-      {result.iterations ? (
-        <div className="text-xs text-zinc-500">Iterations: {result.iterations}</div>
-      ) : null}
-      <div className="flex justify-end">
-        <Button onClick={onOpen}>
-          Open viewer <ArrowRight className="h-4 w-4" />
-        </Button>
+      </div>
+      <StepProgress
+        steps={steps.map((step) => ({
+          ...step,
+          state: step.id === activeId ? 'active' : 'pending',
+        }))}
+      />
+    </div>
+  );
+}
+
+function SourceAnalyzingSkeleton() {
+  return (
+    <div className="space-y-3">
+      <div className="panel-muted flex items-center gap-3 p-4">
+        <Spinner />
+        <div className="text-sm text-text-secondary">
+          Fetching the source — typically 5–15 seconds.
+        </div>
+      </div>
+      <div className="space-y-2">
+        <div className="skeleton h-5 w-2/3" />
+        <div className="skeleton h-4 w-full" />
+        <div className="skeleton h-4 w-5/6" />
+        <div className="skeleton h-4 w-3/4" />
+      </div>
+    </div>
+  );
+}
+
+function SkeletonPost() {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-[#0f1115] p-5">
+      <div className="flex items-center gap-3">
+        <div className="skeleton h-12 w-12 rounded-full" />
+        <div className="flex-1 space-y-2">
+          <div className="skeleton h-4 w-1/3" />
+          <div className="skeleton h-3 w-1/4" />
+        </div>
+      </div>
+      <div className="mt-4 space-y-2">
+        <div className="skeleton h-4 w-full" />
+        <div className="skeleton h-4 w-11/12" />
+        <div className="skeleton h-4 w-2/3" />
+      </div>
+      <div className="mt-3 flex gap-2">
+        <div className="skeleton h-5 w-12 rounded-full" />
+        <div className="skeleton h-5 w-16 rounded-full" />
       </div>
     </div>
   );
