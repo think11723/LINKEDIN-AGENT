@@ -11,6 +11,8 @@ rich==13.9.4
 # Web API
 fastapi>=0.104.0
 uvicorn>=0.24.0
+# Required for FastAPI File / Form / UploadFile (Railway install)
+python-multipart>=0.0.12
 
 # Search
 duckduckgo-search==6.3.5
