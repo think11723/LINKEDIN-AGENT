@@ -10,6 +10,7 @@ import CreatePostPage from './pages/CreatePostPage.jsx';
 import DraftsPage from './pages/DraftsPage.jsx';
 import DraftViewerPage from './pages/DraftViewerPage.jsx';
 import ApprovalPage from './pages/ApprovalPage.jsx';
+import ApprovalFromEmailPage from './pages/ApprovalFromEmailPage.jsx';
 import ScheduledPostsPage from './pages/ScheduledPostsPage.jsx';
 import PublishedPostsPage from './pages/PublishedPostsPage.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="/drafts" element={<DraftsPage />} />
         <Route path="/drafts/:id" element={<DraftViewerPage />} />
         <Route path="/approval" element={<ApprovalPage />} />
+        <Route path="/approve" element={<ApprovalFromEmailPage />} />
         <Route path="/scheduled-posts" element={<ScheduledPostsPage />} />
         <Route path="/published-posts" element={<PublishedPostsPage />} />
         <Route path="/profile" element={<ProfilePage />} />

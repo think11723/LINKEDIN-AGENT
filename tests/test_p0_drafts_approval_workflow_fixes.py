@@ -210,7 +210,7 @@ def test_approval_email_not_sent_when_approval_mode_is_manual(
 
     sent_calls = []
 
-    async def fake_send(*, to, subject, body, settings=None):
+    async def fake_send(*, to, subject, text_body, html_body=None, settings=None):
         sent_calls.append({"to": to, "subject": subject})
         from backend.app.services.email import EmailResult
         return EmailResult(success=True)
@@ -259,7 +259,7 @@ def test_approval_email_skipped_audit_recorded_when_preferences_missing(
 
     sent_calls = []
 
-    async def fake_send(*, to, subject, body, settings=None):
+    async def fake_send(*, to, subject, text_body, html_body=None, settings=None):
         sent_calls.append({"to": to, "subject": subject})
         from backend.app.services.email import EmailResult
         return EmailResult(success=True)
@@ -334,7 +334,7 @@ def test_approval_email_sent_when_approval_mode_is_email_and_smtp_configured(
 
     sent_calls = []
 
-    async def fake_send(*, to, subject, body, settings=None):
+    async def fake_send(*, to, subject, text_body, html_body=None, settings=None):
         sent_calls.append({"to": to, "subject": subject})
         from backend.app.services.email import EmailResult
         return EmailResult(success=True)
@@ -395,7 +395,7 @@ def test_approval_email_failure_does_not_break_draft_creation(
     """If the SMTP send fails, the draft must still be created and
     the user-visible response must be success==200."""
 
-    async def fake_send(*, to, subject, body, settings=None):
+    async def fake_send(*, to, subject, text_body, html_body=None, settings=None):
         from backend.app.services.email import EmailResult
         return EmailResult(success=False, error="SMTPConnectError")
 
@@ -434,7 +434,7 @@ def test_approval_email_not_sent_when_notification_email_missing(
 
     sent_calls = []
 
-    async def fake_send(*, to, subject, body, settings=None):
+    async def fake_send(*, to, subject, text_body, html_body=None, settings=None):
         sent_calls.append({"to": to, "subject": subject})
         from backend.app.services.email import EmailResult
         return EmailResult(success=True)

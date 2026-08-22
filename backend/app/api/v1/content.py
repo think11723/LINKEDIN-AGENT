@@ -612,6 +612,23 @@ async def _persist_result(
     # returned to the caller — the email is best-effort and is
     # recorded as APPROVAL_EMAIL_SENT / APPROVAL_EMAIL_FAILED.
     if users is not None:
+        # Compute the approval expiry in a human-friendly form so the
+        # email can show it to the user without leaking the raw token.
+        approval_expires_at = approval.get("expires_at")
+        expires_at_iso: Optional[str] = None
+        if approval_expires_at is not None:
+            try:
+                expires_at_iso = approval_expires_at.isoformat()
+            except Exception:  # noqa: BLE001
+                expires_at_iso = None
+        # Source-type (Phase 5) — drive the "Source" block in the email
+        # for URL-mode drafts. Topic-mode drafts pass source_url=None
+        # and the email omits the source block.
+        source_type_for_email: Optional[str] = None
+        if isinstance(source_metadata, dict):
+            st = source_metadata.get("source_type")
+            if isinstance(st, str) and st:
+                source_type_for_email = st
         await _maybe_send_approval_email(
             users=users,
             audit=audit,
@@ -619,7 +636,12 @@ async def _persist_result(
             draft_id=draft_id,
             draft_title=title,
             draft_topic=workflow_result.topic,
+            draft_content=content,
+            draft_hashtags=hashtags,
             approval_token=approval["_id"],
+            source_url=source_url,
+            source_type=source_type_for_email,
+            expires_at_iso=expires_at_iso,
         )
 
     payload = workflow_result.model_dump(exclude_none=True)
@@ -654,19 +676,30 @@ async def _maybe_send_approval_email(
     draft_id: str,
     draft_title: str,
     draft_topic: str,
+    draft_content: str,
+    draft_hashtags: list,
     approval_token: str,
+    source_url: Optional[str] = None,
+    source_type: Optional[str] = None,
+    expires_at_iso: Optional[str] = None,
 ) -> None:
     """Send an approval-email notification if the user has opted in.
 
-    Behaviour:
+    Behaviour (Phase 6):
       * If ``preferences.approval_mode != "email"`` → no email.
       * If no ``preferences.notification_email`` is set → no email.
+      * If the notification address is malformed → no email
+        (audit ``APPROVAL_EMAIL_SKIPPED`` with ``reason=invalid_recipient``).
       * If SMTP is not configured on the server → no email (audit
-        event records the reason).
+        event records the reason). The draft is still persisted.
       * If SMTP send fails → ``APPROVAL_EMAIL_FAILED`` audit event
-        with the SMTP error class name and the body fingerprint.
+        with the SMTP error category, code, and the body fingerprint.
       * If SMTP send succeeds → ``APPROVAL_EMAIL_SENT`` audit event
-        with the body fingerprint.
+        with the body fingerprint and the recipient fingerprint.
+
+    For URL-generated drafts (``source_url`` provided), the email
+    body includes a "Source" block identifying the source type
+    (e.g. "GitHub Repository") and a clickable link.
 
     The email body itself is NEVER logged — only its SHA-256[:16]
     fingerprint. The approval token is never echoed into any log.
@@ -675,8 +708,10 @@ async def _maybe_send_approval_email(
 
     from backend.app.core.config import get_settings
     from backend.app.services.email import (
-        build_approval_email_body,
+        build_approval_email,
+        is_valid_recipient,
         send_email,
+        source_label_for,
     )
 
     user_doc = await users.get_preferences(user_id) or {}
@@ -714,17 +749,45 @@ async def _maybe_send_approval_email(
         )
         return
 
+    if not is_valid_recipient(to_address):
+        await audit.log(
+            user_id=user_id,
+            event_type="APPROVAL_EMAIL_SKIPPED",
+            description=draft_title,
+            details={
+                "reason": "invalid_recipient",
+                "recipient_domain": _safe_recipient_domain(to_address),
+                "draft_id": draft_id,
+            },
+        )
+        return
+
     settings = get_settings()
-    approval_url = (
-        f"{settings.frontend_url.rstrip('/')}/settings"
-        f"?approval_token={approval_token}"
-    )
+    frontend_base = settings.frontend_url.rstrip("/")
+    # Approve link — the email approval lands on a dedicated
+    # ``/approve?token=...`` page (Phase 6) which validates the
+    # token, runs the existing /api/v1/approval/approve endpoint,
+    # publishes, and shows a clear result. The token is single-use
+    # and has the standard 24h expiry.
+    approval_url = f"{frontend_base}/approve?token={approval_token}"
+    # Review link — opens the Draft Viewer for the draft (no token
+    # in URL, just the draft id).
+    review_url = f"{frontend_base}/drafts/{draft_id}"
+
     subject = f"Approval needed: {draft_title[:80]}"
-    body = build_approval_email_body(
+
+    # Source-aware rendering: URL-mode drafts include a "Source"
+    # block; topic-mode drafts do not.
+    text_body, html_body = build_approval_email(
         draft_title=draft_title,
-        draft_topic=draft_topic,
-        approval_token=approval_token,
+        draft_content=draft_content,
+        draft_hashtags=draft_hashtags,
         approval_url=approval_url,
+        review_url=review_url,
+        source_label=source_label_for(source_type),
+        source_url=source_url,
+        expires_at_display=expires_at_iso,
+        frontend_brand="LinkedIn AI Studio",
     )
 
     recipient_fp = hashlib.sha256(
@@ -734,35 +797,50 @@ async def _maybe_send_approval_email(
     result = await send_email(
         to=to_address,
         subject=subject,
-        body=body,
+        text_body=text_body,
+        html_body=html_body,
     )
+
+    safe_details = {
+        "draft_id": draft_id,
+        "body_fingerprint_sha256_16": result.fingerprint_sha256_16,
+        "recipient_fingerprint_sha256_16": recipient_fp,
+        "recipient_domain": _safe_recipient_domain(to_address),
+        "attempts": result.attempts,
+        "approval_token": approval_token,
+    }
+    if source_type:
+        safe_details["source_type"] = source_type
 
     if result.success:
         await audit.log(
             user_id=user_id,
             event_type="APPROVAL_EMAIL_SENT",
             description=draft_title,
-            details={
-                "draft_id": draft_id,
-                "approval_token": approval_token,
-                "body_fingerprint_sha256_16": result.fingerprint_sha256_16,
-                "recipient_fingerprint_sha256_16": recipient_fp,
-            },
+            details=safe_details,
         )
         return
 
+    safe_details["error"] = result.error or "unknown"
+    if result.error_category:
+        safe_details["error_category"] = result.error_category
     await audit.log(
         user_id=user_id,
         event_type="APPROVAL_EMAIL_FAILED",
         description=draft_title,
-        details={
-            "draft_id": draft_id,
-            "approval_token": approval_token,
-            "error": result.error or "unknown",
-            "body_fingerprint_sha256_16": result.fingerprint_sha256_16,
-            "recipient_fingerprint_sha256_16": recipient_fp,
-        },
+        details=safe_details,
     )
+
+
+def _safe_recipient_domain(address: str) -> str:
+    """Return the domain part of an email address, never the full
+    recipient. Safe to log / audit."""
+    if not address or "@" not in address:
+        return ""
+    try:
+        return address.rsplit("@", 1)[-1].lower()
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 # ---------------------------------------------------------------------------
