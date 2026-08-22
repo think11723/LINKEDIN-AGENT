@@ -31,6 +31,11 @@ COLLECTION_AUDIT_EVENTS = "audit_events"
 COLLECTION_SOURCE_JOBS = "source_jobs"  # Phase 8D / URL-to-LinkedIn
 COLLECTION_RESUMES = "resumes"  # Phase 10 / AI Resume Studio
 COLLECTION_ATS_ANALYSES = "ats_analyses"  # Phase 10 / AI Resume Studio
+# Phase 11 / Job Tracker
+COLLECTION_JOBS = "jobs"
+COLLECTION_APPLICATIONS = "applications"
+COLLECTION_APP_EVENTS = "application_events"
+COLLECTION_JOB_MATCHES = "job_resume_matches"
 
 _client: Optional[AsyncIOMotorClient] = None
 _db: Optional[AsyncIOMotorDatabase] = None
@@ -536,6 +541,54 @@ async def ensure_indexes() -> None:
         db[COLLECTION_ATS_ANALYSES],
         [("user_id", 1), ("created_at", -1)],
         name="ats_analyses_user_time_idx",
+    )
+
+    # jobs (Phase 11) --------------------------------------------------
+    await _create_index_idempotent(
+        db[COLLECTION_JOBS],
+        [("user_id", 1), ("created_at", -1)],
+        name="jobs_user_created_idx",
+    )
+    # Unique-by-user on the job URL so re-importing the same
+    # listing is detected instead of silently duplicated.
+    await _create_index_idempotent(
+        db[COLLECTION_JOBS],
+        [("user_id", 1), ("job_url", 1)],
+        name="jobs_user_url_idx",
+        unique=True,
+        partial=True,
+    )
+
+    # applications (Phase 11) ------------------------------------------
+    await _create_index_idempotent(
+        db[COLLECTION_APPLICATIONS],
+        [("user_id", 1), ("status", 1), ("updated_at", -1)],
+        name="applications_user_status_idx",
+    )
+    await _create_index_idempotent(
+        db[COLLECTION_APPLICATIONS],
+        [("user_id", 1), ("job_id", 1)],
+        name="applications_user_job_idx",
+    )
+
+    # application_events (Phase 11) ------------------------------------
+    await _create_index_idempotent(
+        db[COLLECTION_APP_EVENTS],
+        [("user_id", 1), ("application_id", 1), ("timestamp", -1)],
+        name="app_events_user_app_time_idx",
+    )
+
+    # job_resume_matches (Phase 11) ------------------------------------
+    await _create_index_idempotent(
+        db[COLLECTION_JOB_MATCHES],
+        [("user_id", 1), ("job_id", 1), ("resume_id", 1)],
+        name="job_matches_user_job_resume_idx",
+        unique=True,
+    )
+    await _create_index_idempotent(
+        db[COLLECTION_JOB_MATCHES],
+        [("user_id", 1), ("job_id", 1)],
+        name="job_matches_user_job_idx",
     )
 
     logger.info("MongoDB indexes ensured.")

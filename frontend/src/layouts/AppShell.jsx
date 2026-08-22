@@ -22,6 +22,7 @@ import {
   TrendingUp,
   Globe,
   Briefcase,
+  Target,
 } from 'lucide-react';
 
 import { cn } from '../utils/cn.js';
@@ -43,6 +44,7 @@ const NAV_PRIMARY = [
   { to: '/drafts', label: 'Drafts', icon: NotebookPen },
   { to: '/approval', label: 'Approval', icon: FileCheck2 },
   { to: '/resume', label: 'Resume Studio', icon: Briefcase },
+  { to: '/job-tracker', label: 'Job Tracker', icon: Target },
 ];
 
 const NAV_PUBLISHING = [

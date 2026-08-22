@@ -13,6 +13,9 @@ import ResumeStudioPage from './pages/ResumeStudioPage.jsx';
 import ResumeEditorPage from './pages/ResumeEditorPage.jsx';
 import ResumeATSPage from './pages/ResumeATSPage.jsx';
 import ResumeLinkedInPage from './pages/ResumeLinkedInPage.jsx';
+import JobTrackerPage from './pages/JobTrackerPage.jsx';
+import JobDetailPage from './pages/JobDetailPage.jsx';
+import JobImportPage from './pages/JobImportPage.jsx';
 import ApprovalPage from './pages/ApprovalPage.jsx';
 import ApprovalFromEmailPage from './pages/ApprovalFromEmailPage.jsx';
 import ScheduledPostsPage from './pages/ScheduledPostsPage.jsx';
@@ -45,6 +48,11 @@ export default function App() {
         <Route path="/resume/:id/edit" element={<ResumeEditorPage />} />
         <Route path="/resume/:id/ats" element={<ResumeATSPage />} />
         <Route path="/resume/:id/linkedin" element={<ResumeLinkedInPage />} />
+        <Route path="/job-tracker" element={<JobTrackerPage />} />
+        <Route path="/jobs" element={<JobTrackerPage />} />
+        <Route path="/jobs/new" element={<JobImportPage />} />
+        <Route path="/jobs/import" element={<JobImportPage />} />
+        <Route path="/jobs/:id" element={<JobDetailPage />} />
         <Route path="/approval" element={<ApprovalPage />} />
         <Route path="/approve" element={<ApprovalFromEmailPage />} />
         <Route path="/scheduled-posts" element={<ScheduledPostsPage />} />

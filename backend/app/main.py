@@ -128,6 +128,14 @@ app.include_router(settings_router)
 from backend.app.api.v1.resumes import router as resumes_router  # noqa: E402
 
 app.include_router(resumes_router)
+# Phase 11 / Job Tracker
+from backend.app.api.v1.jobs import (  # noqa: E402
+    applications_router as jobs_applications_router,
+    jobs_router as jobs_jobs_router,
+)
+
+app.include_router(jobs_jobs_router)
+app.include_router(jobs_applications_router)
 
 # P0-1 — global error handlers (install before request handlers).
 install_error_handlers(app)

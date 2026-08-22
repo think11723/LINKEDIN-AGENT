@@ -156,6 +156,79 @@ export function useApi() {
           path: `/api/v1/resumes/${encodeURIComponent(resumeId)}/linkedin`,
           body: payload,
         }),
+      // Phase 11 / Job Tracker
+      listJobs: () => authedRequest({ path: '/api/v1/jobs' }),
+      getJob: (jobId) =>
+        authedRequest({ path: `/api/v1/jobs/${encodeURIComponent(jobId)}` }),
+      createJob: (payload) =>
+        authedRequest({ method: 'POST', path: '/api/v1/jobs', body: payload }),
+      updateJob: (jobId, payload) =>
+        authedRequest({
+          method: 'PUT',
+          path: `/api/v1/jobs/${encodeURIComponent(jobId)}`,
+          body: payload,
+        }),
+      deleteJob: (jobId) =>
+        authedRequest({
+          method: 'DELETE',
+          path: `/api/v1/jobs/${encodeURIComponent(jobId)}`,
+        }),
+      importJob: (payload) =>
+        authedRequest({ method: 'POST', path: '/api/v1/jobs/import', body: payload }),
+      analyzeJob: (jobId) =>
+        authedRequest({
+          method: 'POST',
+          path: `/api/v1/jobs/${encodeURIComponent(jobId)}/analyze`,
+        }),
+      matchResumes: (jobId, payload) =>
+        authedRequest({
+          method: 'POST',
+          path: `/api/v1/jobs/${encodeURIComponent(jobId)}/match-resume`,
+          body: payload,
+        }),
+      listJobMatches: (jobId) =>
+        authedRequest({
+          path: `/api/v1/jobs/${encodeURIComponent(jobId)}/matches`,
+        }),
+      optimizeResume: (jobId, payload) =>
+        authedRequest({
+          method: 'POST',
+          path: `/api/v1/jobs/${encodeURIComponent(jobId)}/optimize`,
+          body: payload,
+        }),
+      linkedinFromJob: (jobId, payload) =>
+        authedRequest({
+          method: 'POST',
+          path: `/api/v1/jobs/${encodeURIComponent(jobId)}/linkedin`,
+          body: payload,
+        }),
+      listApplications: (status) =>
+        authedRequest({
+          path: `/api/v1/applications${status ? `?status=${encodeURIComponent(status)}` : ''}`,
+        }),
+      getApplication: (appId) =>
+        authedRequest({
+          path: `/api/v1/applications/${encodeURIComponent(appId)}`,
+        }),
+      createApplication: (payload) =>
+        authedRequest({
+          method: 'POST',
+          path: '/api/v1/applications',
+          body: payload,
+        }),
+      updateApplication: (appId, payload) =>
+        authedRequest({
+          method: 'PUT',
+          path: `/api/v1/applications/${encodeURIComponent(appId)}`,
+          body: payload,
+        }),
+      deleteApplication: (appId) =>
+        authedRequest({
+          method: 'DELETE',
+          path: `/api/v1/applications/${encodeURIComponent(appId)}`,
+        }),
+      applicationDashboard: () =>
+        authedRequest({ path: '/api/v1/applications/dashboard' }),
     };
   }, [user]);
 }

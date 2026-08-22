@@ -77,6 +77,38 @@ def get_resume_service(
     return ResumeService(repo)
 
 
+# ----------------------------------------------------------------
+# Phase 11 / Job Tracker
+# ----------------------------------------------------------------
+
+def get_job_repository(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    from backend.app.repositories.job_repository import JobRepository
+    return JobRepository(db)
+
+
+def get_application_repository(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    from backend.app.repositories.job_repository import ApplicationRepository
+    return ApplicationRepository(db)
+
+
+def get_application_event_repository(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    from backend.app.repositories.job_repository import ApplicationEventRepository
+    return ApplicationEventRepository(db)
+
+
+def get_job_match_repository(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    from backend.app.repositories.job_repository import JobMatchRepository
+    return JobMatchRepository(db)
+
+
 def get_oauth_state_repository(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> OAuthStateRepository:
